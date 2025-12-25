@@ -40,6 +40,10 @@ def H : LC := { terms := #[⟨1.0, 1.0⟩] }
 def ofFloat (x : Float) : LC :=
   if x == 0.0 then { terms := #[] } else { terms := #[⟨0.0, x⟩] }
 
+/-- From single term. -/
+def ofTerm (t : Term) : LC :=
+  if t.coeff == 0.0 then { terms := #[] } else { terms := #[t] }
+
 instance : OfNat LC n where
   ofNat := ofFloat n.toFloat
 
@@ -121,6 +125,18 @@ def getCoeff (x : LC) (e : Float) : Float :=
 
 /-- Standard part. -/
 def std (x : LC) : Float := getCoeff x 0.0
+
+/-- Infinitesimal part (terms with exp < 0). -/
+def infinitesimalPart (x : LC) : LC :=
+  { terms := x.terms.filter (·.exp < 0.0) }
+
+/-- Infinite part (terms with exp > 0). -/
+def infinitePart (x : LC) : LC :=
+  { terms := x.terms.filter (·.exp > 0.0) }
+
+/-- Check if the number is finite (no infinite part). -/
+def isFinite (x : LC) : Bool :=
+  x.terms.all (·.exp <= 0.0)
 
 /-- Derivative via infinitesimal. -/
 def derivative (f : LC → LC) (pt : LC) : Float :=

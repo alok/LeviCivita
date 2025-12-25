@@ -1,0 +1,9 @@
+# Lake build artifacts
+.lake/
+lake-manifest.json
+
+# Generated output
+_out/
+
+
+

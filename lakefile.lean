@@ -8,6 +8,9 @@ package LeviCivita where
     ⟨`relaxedAutoImplicit, false⟩
   ]
 
+require mathlib from git
+  "https://github.com/leanprover-community/mathlib4.git" @ "v4.27.0-rc1"
+
 @[default_target]
 lean_lib LeviCivita where
   globs := #[.submodules `LeviCivita]
@@ -18,3 +21,6 @@ lean_exe lcbench where
 
 lean_exe nativebench where
   root := `LeviCivita.NativeBench
+
+lean_exe computable_test where
+  root := `Main

@@ -1,6 +1,8 @@
 import Std
 import LeviCivita.Fast
+-- import LeviCivita
 
+open LeviCivita.Fast.FastLC
 /-!
 # Ultra-Fast Levi-Civita Implementation
 
@@ -372,3 +374,12 @@ def bench (name : String) (iters : Nat) (f : Unit → α) : IO Unit := do
   IO.println s!"  Expected: 405.0"
 
 end LeviCivita.Bench
+
+
+-- Compute derivative of x³ at x = 2
+#eval derivative (fun x => x * x * x) (ofFloat 4.0)  -- 12.0
+-- example : derivative (fun x => x * x * x) (ofFloat ·) = (fun x => 3 * x * x) (ofFloat ·) := by
+-- Work with infinitesimals
+#eval (ofFloat 1.0 + epsilon) * (ofFloat 2.0 + epsilon)
+-- 2 + 3ε + ε²
+-- TODO: break out the Repr into its own so different implementations can be iterated

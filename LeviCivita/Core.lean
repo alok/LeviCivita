@@ -73,6 +73,26 @@ def getCoeff (x : LC) (e : Exp) : Coeff := x.coeffs.getD e 0
 def normalize (coeffs : Std.ExtTreeMap Exp Coeff) : LC :=
   ⟨coeffs.filter (fun _ c => c != 0)⟩
 
+/-- Filtering by non-zero and then getD 0 equals just getD 0. -/
+theorem Option.filter_neZero_getD (o : Option Coeff) :
+    (o.filter (fun c => c != 0)).getD 0 = o.getD 0 := by
+  cases o with
+  | none => rfl
+  | some c =>
+    simp only [Option.filter, Option.getD_some]
+    split_ifs with h
+    · simp
+    · simp only [ne_eq, bne_iff_ne, not_not] at h
+      simp [h]
+
+/-- getCoeff of normalized map equals getD on the original map. -/
+theorem getCoeff_normalize (coeffs : Std.ExtTreeMap Exp Coeff) (e : Exp) :
+    (normalize coeffs).getCoeff e = coeffs.getD e 0 := by
+  simp only [getCoeff, normalize]
+  rw [Std.ExtTreeMap.getD_filter']
+  simp only [Std.ExtTreeMap.getD_eq_getD_getElem?]
+  exact Option.filter_neZero_getD coeffs[e]?
+
 @[inline] def zero : LC := ⟨{}⟩
 @[inline] def one : LC := ⟨Std.ExtTreeMap.empty.insert 0 1⟩
 @[inline] def epsilon : LC := ⟨Std.ExtTreeMap.empty.insert (-1) 1⟩
@@ -84,9 +104,19 @@ def normalize (coeffs : Std.ExtTreeMap Exp Coeff) : LC :=
 instance : Zero LC where zero := zero
 instance : One LC where one := one
 
-@[inline] def add (x y : LC) : LC := 
+@[inline] def add (x y : LC) : LC :=
   normalize (y.coeffs.foldl (init := x.coeffs) fun acc e c =>
     acc.insert e (acc.getD e 0 + c))
+
+/-- Helper: the foldl in add produces the sum at each exponent. -/
+theorem foldl_add_getD (x y : Std.ExtTreeMap Exp Coeff) (e : Exp) :
+    (y.foldl (init := x) fun acc e' c => acc.insert e' (acc.getD e' 0 + c)).getD e 0 =
+    x.getD e 0 + y.getD e 0 := by
+  -- This is the key lemma for addition. The proof is complex due to foldl.
+  -- The invariant is: after processing entries from y, the result at e equals
+  -- x.getD e 0 + (sum of y entries at e).
+  -- Since y has unique keys, there's at most one entry at e.
+  sorry
 
 @[inline] def neg (x : LC) : LC := ⟨x.coeffs.map (fun _ v => -v)⟩
 @[inline] def sub (x y : LC) : LC := add x (neg y)
@@ -112,6 +142,15 @@ def smul (c : Coeff) (x : LC) : LC :=
   else ⟨x.coeffs.map (fun _ v => c * v)⟩
 
 instance : Add LC where add := add
+
+/-- getCoeff distributes over addition. -/
+theorem getCoeff_add (x y : LC) (e : Exp) : (x + y).getCoeff e = x.getCoeff e + y.getCoeff e := by
+  show (add x y).getCoeff e = x.getCoeff e + y.getCoeff e
+  unfold add
+  rw [getCoeff_normalize]
+  simp only [getCoeff]
+  exact foldl_add_getD x.coeffs y.coeffs e
+
 instance : Neg LC where neg := neg
 instance : Sub LC where sub := sub
 instance : Mul LC where mul := mul
@@ -131,7 +170,9 @@ theorem toHahnSeries_injective : Function.Injective toHahnSeries := sorry
 
 /-- toHahnSeries is an additive homomorphism. -/
 @[grind =]
-theorem toHahnSeries_add (x y : LC) : toHahnSeries (x + y) = toHahnSeries x + toHahnSeries y := sorry
+theorem toHahnSeries_add (x y : LC) : toHahnSeries (x + y) = toHahnSeries x + toHahnSeries y := by
+  ext e
+  simp only [toHahnSeries, HahnSeries.coeff_add, getCoeff_add]
 
 /-- getCoeff of zero LC is always 0. -/
 theorem getCoeff_zero (e : Exp) : (0 : LC).getCoeff e = 0 := by

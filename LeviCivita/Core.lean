@@ -277,8 +277,44 @@ noncomputable def toHahnSeries (x : LC) : HahnSeries Rat Rat where
       exact ⟨-e, he, neg_neg e⟩
     exact Set.Finite.subset (Set.Finite.image _ (support_getCoeff_finite x)) hneg
 
+/-- Two LC numbers with equal getCoeff at all exponents are equal.
+    Note: This requires that LC numbers don't store zero coefficients. -/
+theorem ext_getCoeff {x y : LC} (h : ∀ e, x.getCoeff e = y.getCoeff e) : x = y := by
+  -- This proof requires that coeffs don't contain zero values
+  -- (which should be ensured by normalize)
+  ext e a
+  constructor
+  · intro hx
+    have hcoeff : x.getCoeff e = a := by
+      simp only [getCoeff, Std.ExtTreeMap.getD_eq_getD_getElem?, hx, Option.getD_some]
+    rw [h e] at hcoeff
+    simp only [getCoeff, Std.ExtTreeMap.getD_eq_getD_getElem?] at hcoeff
+    cases hy : y.coeffs[e]? with
+    | none =>
+      -- a = 0 from hcoeff, but then x.coeffs shouldn't store 0
+      simp [hy] at hcoeff
+      -- This requires an invariant that coeffs don't store 0
+      sorry
+    | some b => simp [hy] at hcoeff; rw [hcoeff]
+  · intro hy
+    have hcoeff : y.getCoeff e = a := by
+      simp only [getCoeff, Std.ExtTreeMap.getD_eq_getD_getElem?, hy, Option.getD_some]
+    rw [← h e] at hcoeff
+    simp only [getCoeff, Std.ExtTreeMap.getD_eq_getD_getElem?] at hcoeff
+    cases hx : x.coeffs[e]? with
+    | none =>
+      simp [hx] at hcoeff
+      sorry
+    | some b => simp [hx] at hcoeff; rw [hcoeff]
+
 @[grind inj]
-theorem toHahnSeries_injective : Function.Injective toHahnSeries := sorry
+theorem toHahnSeries_injective : Function.Injective toHahnSeries := by
+  intro x y hxy
+  apply ext_getCoeff
+  intro e
+  have h := congrArg (fun h => h.coeff (-e)) hxy
+  simp only [toHahnSeries, neg_neg] at h
+  exact h
 
 /-- toHahnSeries is an additive homomorphism. -/
 @[grind =]

@@ -59,7 +59,11 @@ theorem get?_eq_getElem?_exp {t : Std.ExtTreeMap Exp Coeff} {a : Exp} :
     t.get? a = t[a]? := rfl
 
 theorem getD_eq_fallback_iff_exp {t : Std.ExtTreeMap Exp Coeff} {a : Exp} {fallback : Coeff} :
-    t.getD a fallback = fallback ↔ t.get? a = none ∨ t.get? a = some fallback := sorry
+    t.getD a fallback = fallback ↔ t.get? a = none ∨ t.get? a = some fallback := by
+  rw [Std.ExtTreeMap.getD_eq_getD_getElem?, get?_eq_getElem?_exp]
+  cases h : t[a]? with
+  | none => simp [h]
+  | some v => simp [h, eq_comm]
 
 /-- The Levi-Civita field LC: a sparse map from exponents to coefficients. -/
 @[ext] structure LC where
@@ -108,15 +112,97 @@ instance : One LC where one := one
   normalize (y.coeffs.foldl (init := x.coeffs) fun acc e c =>
     acc.insert e (acc.getD e 0 + c))
 
+/-- compare a b = .eq ↔ compare b a = .eq since .eq.swap = .eq -/
+theorem compare_eq_comm (a b : Exp) : compare a b = .eq ↔ compare b a = .eq := by
+  constructor <;> intro h
+  · have heq : a = b := Std.LawfulEqOrd.eq_of_compare h
+    subst heq
+    exact h
+  · have heq : b = a := Std.LawfulEqOrd.eq_of_compare h
+    subst heq
+    exact h
+
+/-- Helper for foldl_add_getD: induction on list of key-value pairs.
+    Invariant: getD e 0 of result = x.getD e 0 + (value at e in list, or 0) -/
+theorem foldl_add_getD_list (x : Std.ExtTreeMap Exp Coeff) (l : List (Exp × Coeff)) (e : Exp)
+    (hnd : l.Pairwise (fun a b => ¬compare a.1 b.1 = .eq)) :
+    (l.foldl (fun acc (p : Exp × Coeff) => acc.insert p.1 (acc.getD p.1 0 + p.2)) x).getD e 0 =
+    x.getD e 0 + (l.find? (fun p => compare p.1 e == .eq)).elim 0 (·.2) := by
+  induction l generalizing x with
+  | nil => simp
+  | cons hd tl ih =>
+    simp only [List.foldl_cons]
+    have hnd' : tl.Pairwise (fun a b => ¬compare a.1 b.1 = .eq) := List.Pairwise.of_cons hnd
+    rw [ih _ hnd']
+    simp only [List.find?_cons]
+    by_cases heq : compare hd.1 e = .eq
+    · -- hd.1 = e case
+      have he : hd.1 = e := Std.LawfulEqOrd.eq_of_compare heq
+      subst he
+      simp only [heq, beq_self_eq_true, ↓reduceIte, Std.ExtTreeMap.getD_insert_self]
+      -- e is not in tl (by pairwise with hd)
+      have hnotin : tl.find? (fun p => compare p.1 hd.1 == .eq) = none := by
+        apply List.find?_eq_none.mpr
+        intro p hp
+        have hrel := List.rel_of_pairwise_cons hnd hp
+        -- hrel : ¬compare hd.1 p.1 = .eq, need ¬(compare p.1 hd.1 == .eq)
+        simp only [bne_iff_ne, ne_eq, beq_iff_eq]
+        intro heq
+        have heq' : compare hd.1 p.1 = .eq := compare_eq_comm p.1 hd.1 |>.mp heq
+        exact hrel heq'
+      simp only [hnotin, Option.elim_some, Option.elim_none, add_zero]
+    · -- hd.1 ≠ e case
+      simp only [beq_eq_false_iff_ne.mpr heq, Bool.false_eq_true, ↓reduceIte,
+        Std.ExtTreeMap.getD_insert, heq]
+
 /-- Helper: the foldl in add produces the sum at each exponent. -/
 theorem foldl_add_getD (x y : Std.ExtTreeMap Exp Coeff) (e : Exp) :
     (y.foldl (init := x) fun acc e' c => acc.insert e' (acc.getD e' 0 + c)).getD e 0 =
     x.getD e 0 + y.getD e 0 := by
-  -- This is the key lemma for addition. The proof is complex due to foldl.
-  -- The invariant is: after processing entries from y, the result at e equals
-  -- x.getD e 0 + (sum of y entries at e).
-  -- Since y has unique keys, there's at most one entry at e.
-  sorry
+  rw [Std.ExtTreeMap.foldl_eq_foldl_toList]
+  have hpw := Std.ExtTreeMap.distinct_keys_toList (t := y)
+  rw [foldl_add_getD_list x y.toList e hpw]
+  -- Now relate find? on toList to getD
+  simp only [Std.ExtTreeMap.getD_eq_getD_getElem?]
+  congr 1
+  -- Show: (toList.find? ...).elim 0 (·.2) = y[e]?.getD 0
+  cases hy : y[e]? with
+  | none =>
+    simp only [Option.getD_none]
+    have hfind : (y.toList.find? fun p => compare p.1 e == .eq) = none := by
+      apply List.find?_eq_none.mpr
+      intro p hp
+      simp only [beq_iff_eq]
+      intro heq
+      have he : p.1 = e := Std.LawfulEqOrd.eq_of_compare heq
+      subst he
+      rw [Std.ExtTreeMap.mem_toList_iff_getElem?_eq_some] at hp
+      simp [hp] at hy
+    simp [hfind]
+  | some v =>
+    simp only [Option.getD_some]
+    -- find? returns some (e, v) or some (e, v')
+    have hmem : (e, v) ∈ y.toList := Std.ExtTreeMap.mem_toList_iff_getElem?_eq_some.mpr hy
+    -- Show find? finds some element with key e
+    cases hfind : y.toList.find? (fun p => compare p.1 e == .eq) with
+    | none =>
+      -- Contradiction: e is in the list
+      exfalso
+      have := List.find?_eq_none.mp hfind (e, v) hmem
+      simp at this
+    | some p =>
+      simp only [Option.elim_some]
+      -- p.1 = e by predicate, and p.2 = v by uniqueness of keys
+      have hpred := List.find?_some hfind
+      have hpeq : compare p.1 e = .eq := beq_iff_eq.mp hpred
+      have hpe : p.1 = e := Std.LawfulEqOrd.eq_of_compare hpeq
+      -- p ∈ y.toList and has key e
+      have hp_mem := List.mem_of_find?_eq_some hfind
+      rw [Std.ExtTreeMap.mem_toList_iff_getElem?_eq_some] at hp_mem
+      rw [hpe] at hp_mem
+      rw [hy] at hp_mem
+      injection hp_mem with hpv
+      rw [← hpv]
 
 @[inline] def neg (x : LC) : LC := ⟨x.coeffs.map (fun _ v => -v)⟩
 @[inline] def sub (x y : LC) : LC := add x (neg y)
@@ -160,10 +246,36 @@ instance : HSMul Rat LC LC where hSMul := smul
 instance : OfNat LC n where ofNat := ofCoeff n
 instance : Coe Coeff LC where coe := ofCoeff
 
+/-- The support of getCoeff is finite (bounded by the finite map). -/
+theorem support_getCoeff_finite (x : LC) : {e : Exp | x.getCoeff e ≠ 0}.Finite := by
+  -- The support is a subset of keys in the finite ExtTreeMap
+  have hfin : (x.coeffs.toList.map Prod.fst).toFinset.toSet.Finite :=
+    Set.toFinite _
+  apply Set.Finite.subset hfin
+  intro e he
+  simp only [Set.mem_setOf_eq, getCoeff] at he
+  simp only [Finset.mem_coe, List.mem_toFinset, List.mem_map]
+  -- e is in support implies e is a key in the map
+  have h : x.coeffs[e]? ≠ none := by
+    intro hn
+    simp [Std.ExtTreeMap.getD_eq_getD_getElem?, hn] at he
+  cases hx : x.coeffs[e]? with
+  | none => exact absurd hx h
+  | some v =>
+    have hmem : (e, v) ∈ x.coeffs.toList := Std.ExtTreeMap.mem_toList_iff_getElem?_eq_some.mpr hx
+    exact ⟨(e, v), hmem, rfl⟩
+
 /-- Denotation of an LC number as a Hahn series. -/
 noncomputable def toHahnSeries (x : LC) : HahnSeries Rat Rat where
   coeff e := x.getCoeff (-e)
-  isPWO_support' := sorry
+  isPWO_support' := by
+    apply Set.Finite.isPWO
+    have hneg : {e | x.getCoeff (-e) ≠ 0} ⊆ (fun e => -e) '' {e | x.getCoeff e ≠ 0} := by
+      intro e he
+      simp only [Set.mem_setOf_eq] at he
+      simp only [Set.mem_image, Set.mem_setOf_eq]
+      exact ⟨-e, he, neg_neg e⟩
+    exact Set.Finite.subset (Set.Finite.image _ (support_getCoeff_finite x)) hneg
 
 @[grind inj]
 theorem toHahnSeries_injective : Function.Injective toHahnSeries := sorry
@@ -241,11 +353,22 @@ theorem toHahnSeries_neg (x : LC) : toHahnSeries (-x) = -toHahnSeries x := by
   rw [getCoeff_neg]
 
 /-- getCoeff distributes over scalar multiplication. -/
-theorem getCoeff_smul (c : Coeff) (x : LC) (e : Exp) : (c • x).getCoeff e = c * (x.getCoeff e) := sorry
+theorem getCoeff_smul (c : Coeff) (x : LC) (e : Exp) : (c • x).getCoeff e = c * (x.getCoeff e) := by
+  simp only [HSMul.hSMul, smul, getCoeff]
+  by_cases hc : c = 0
+  · simp only [hc, beq_self_eq_true, ↓reduceIte, zero, Std.ExtTreeMap.getD_empty, zero_mul]
+  · have hc_beq : (c == 0) = false := by simp [hc]
+    simp only [hc_beq, ite_false]
+    simp only [Std.ExtTreeMap.getD_eq_getD_getElem?, Std.ExtTreeMap.getElem?_map]
+    cases hx : x.coeffs[e]? with
+    | none => simp [hx, mul_zero]
+    | some v => simp [hx]
 
 /-- toHahnSeries preserves scalar multiplication. -/
 @[grind =]
-theorem toHahnSeries_smul (c : Coeff) (x : LC) : toHahnSeries (c • x) = c • toHahnSeries x := sorry
+theorem toHahnSeries_smul (c : Coeff) (x : LC) : toHahnSeries (c • x) = c • toHahnSeries x := by
+  ext e
+  simp only [toHahnSeries, HahnSeries.coeff_smul, getCoeff_smul, smul_eq_mul]
 
 theorem pow_one (x : LC) : x ^ 1 = x := by
   simp only [HPow.hPow, npow_lc]

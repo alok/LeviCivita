@@ -20,11 +20,9 @@ def IsInfinitesimal (x : LC) : Prop :=
   | some t => t.exp < 0
 
 /-- The n-th term of the Taylor series for exp(δ): δⁿ / n! -/
-def expTerm (δ : LC) (n : Nat) : LC := Id.run do
-  let mut fact : Coeff := 1
-  for i in [1:n+1] do
-    fact := fact * (i : Coeff)
-  (fact⁻¹ : Coeff) • (δ ^ n)
+def expTerm (δ : LC) (n : Nat) : LC := 
+  let fact_n : Coeff := (List.range n |>.map (fun i => (i + 1 : Coeff)) |>.foldl (· * ·) 1)
+  (fact_n⁻¹ : Coeff) • (δ ^ n)
 
 /-- Partial sum of the exponential series. -/
 def expPartialSum (δ : LC) (n : Nat) : LC := Id.run do
@@ -33,31 +31,41 @@ def expPartialSum (δ : LC) (n : Nat) : LC := Id.run do
     sum := sum + expTerm δ i
   sum
 
-/-! ## Convergence Verification -/
+/-! ## Infrastructure for Convergence -/
 
-/-- Property: leading exponent of a power is n times the leading exponent. -/
+/-- Power of an infinitesimal has leading exponent proportional to the power. -/
 theorem leadingExp_pow (δ : LC) (n : Nat) (hδ : ¬δ.coeffs.isEmpty) :
     (δ ^ (n + 1)).leadingExp = (n + 1) * δ.leadingExp := by
-  sorry
+  induction n with
+  | zero => 
+    rw [LC.pow_one]
+    simp
+  | succ n ih =>
+    rw [LC.pow_succ]
+    have h_pow_nz : ¬(δ ^ (n + 1)).coeffs.isEmpty := sorry
+    rw [LC.leadingExp_mul _ _ h_pow_nz hδ]
+    rw [ih]
+    simp [Nat.cast_succ]
+    ring
 
-/-- Property: scalar multiplication doesn't change leading exponent (if scalar nonzero). -/
-theorem leadingExp_smul (c : Coeff) (x : LC) (hc : c ≠ 0) (hx : ¬x.coeffs.isEmpty) :
-    (c • x).leadingExp = x.leadingExp := by
-  sorry
-
-/-- Convergence: For infinitesimal δ, the exponents of the Taylor terms tend to -∞. -/
+/-- For infinitesimal δ, the leading exponent of Taylor terms tends to -∞. -/
 theorem valuation_tendsto (δ : LC) (hδ : IsInfinitesimal δ) (hnonzero : ¬δ.coeffs.isEmpty) :
     ∀ (M : Exp), ∃ N : Nat, ∀ n ≥ N, (expTerm δ n).leadingExp < M := by
   intro M
-  let e := δ.leadingExp
-  have he : e < 0 := sorry
+  have he_neg : δ.leadingExp < 0 := sorry
   
-  -- We need n * e < M. Since e < 0, n > M / e.
-  let N := (M / e).ceil.toNat + 1
+  -- Take N = ceil(M / δ.leadingExp) + 1
+  let N := (M / δ.leadingExp).ceil.toNat + 1
   exists N
   intro n hn
-  -- (expTerm δ n).leadingExp = leadingExp ((1/n!) • δ^n) = leadingExp (δ^n) = n * e
-  -- n * e ≤ N * e < M
-  sorry
+  unfold expTerm
+  have h_fact_nz : ((List.range n |>.map (fun i => (i + 1 : Coeff)) |>.foldl (· * ·) 1)⁻¹ : Coeff) ≠ 0 := sorry
+  have h_pow_nz : ¬(δ ^ n).coeffs.isEmpty := sorry
+  rw [leadingExp_smul _ _ h_fact_nz h_pow_nz]
+  match n with
+  | 0 => sorry
+  | n + 1 =>
+    rw [leadingExp_pow δ n hnonzero]
+    sorry
 
 end LeviCivita.FormalTranscendental

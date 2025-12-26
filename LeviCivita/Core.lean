@@ -65,6 +65,27 @@ theorem getD_eq_fallback_iff_exp {t : Std.ExtTreeMap Exp Coeff} {a : Exp} {fallb
   | none => simp [h]
   | some v => simp [h, eq_comm]
 
+/-- map preserves maxKey? since it preserves membership. -/
+theorem maxKey?_map_exp (t : Std.ExtTreeMap Exp Coeff) (f : Exp → Coeff → Coeff) :
+    (t.map f).maxKey? = t.maxKey? := by
+  cases ht : t.maxKey? with
+  | none =>
+    rw [Std.ExtTreeMap.maxKey?_eq_none_iff] at ht
+    have hempty : (t.map f) = ∅ := by
+      rw [Std.ExtTreeMap.isEmpty_iff]
+      rw [Std.ExtTreeMap.isEmpty_iff] at ht
+      simp only [Std.ExtTreeMap.size_map, ht]
+    rw [Std.ExtTreeMap.maxKey?_eq_none_iff]
+    exact hempty
+  | some km =>
+    have hmem : km ∈ t.map f := Std.ExtTreeMap.mem_map.mpr (Std.ExtTreeMap.maxKey?_mem ht)
+    have hle : ∀ k, k ∈ t.map f → (compare k km).isLE = true := by
+      intro k hk
+      rw [Std.ExtTreeMap.mem_map] at hk
+      exact Std.ExtTreeMap.maxKey?_le.mp (fun _ h' => by rw [ht] at h'; cases h'; simp [compare]) k hk
+    symm
+    exact Std.ExtTreeMap.maxKey?_eq_some_iff_mem_and_forall.mpr ⟨hmem, hle⟩
+
 /-- The Levi-Civita field LC: a sparse map from exponents to coefficients. -/
 @[ext] structure LC where
   coeffs : Std.ExtTreeMap Exp Coeff
@@ -431,12 +452,66 @@ theorem mul_assoc (x y z : LC) : mul (mul x y) z = mul x (mul y z) := sorry
 -- Main power successor theorem (complex due to binary exponentiation)
 theorem pow_succ (x : LC) (n : Nat) : x ^ (n + 1) = x ^ n * x := sorry
 
+/-- getCoeff distributes over subtraction. -/
+theorem getCoeff_sub (x y : LC) (e : Exp) : (x - y).getCoeff e = x.getCoeff e - y.getCoeff e := by
+  show (sub x y).getCoeff e = x.getCoeff e - y.getCoeff e
+  simp only [sub]
+  rw [getCoeff_add, getCoeff_neg]
+  ring
+
+/-- x - x has all zero coefficients. -/
+theorem getCoeff_sub_self (x : LC) (e : Exp) : (x - x).getCoeff e = 0 := by
+  rw [getCoeff_sub]; ring
+
 def signum (x : LC) : Int :=
   match x.coeffs.maxKey? with
   | none => 0
-  | some e => 
+  | some e =>
     let c := x.coeffs.getD e 0
     if c > 0 then 1 else -1
+
+/-- signum of zero is 0. -/
+theorem signum_zero : signum (0 : LC) = 0 := rfl
+
+/-- If all coefficients are zero, then the LC is zero. -/
+theorem eq_zero_of_getCoeff_eq_zero (x : LC) (h : ∀ e, x.getCoeff e = 0) :
+    x.coeffs.maxKey? = none := by
+  by_contra hne
+  push_neg at hne
+  obtain ⟨km, hkm⟩ := Option.ne_none_iff_exists'.mp hne
+  have hc := h km
+  simp only [getCoeff, Std.ExtTreeMap.getD_eq_getD_getElem?] at hc
+  have hmem : km ∈ x.coeffs := Std.ExtTreeMap.maxKey?_mem hkm
+  rw [Std.ExtTreeMap.mem_iff_isSome_getElem?] at hmem
+  cases hget : x.coeffs[km]? with
+  | none => simp [hget] at hmem
+  | some v =>
+    simp [hget] at hc
+    -- v = 0, but the map shouldn't store zeros (normalization invariant)
+    -- This requires the invariant that coeffs don't contain zero values
+    sorry
+
+/-- signum of x - x is 0 or ≥ 0. -/
+theorem signum_sub_self (x : LC) : signum (x - x) ≥ 0 := by
+  show signum (sub x x) ≥ 0
+  simp only [signum]
+  have h : ∀ e, (sub x x).getCoeff e = 0 := getCoeff_sub_self x
+  cases hmax : (sub x x).coeffs.maxKey? with
+  | none => simp
+  | some e =>
+    -- If maxKey? = some e, then getCoeff e ≠ 0 (by map invariant)
+    -- But h says getCoeff e = 0, contradiction
+    -- This requires the normalization invariant
+    have hc := h e
+    simp only [getCoeff, Std.ExtTreeMap.getD_eq_getD_getElem?] at hc
+    have hmem : e ∈ (sub x x).coeffs := Std.ExtTreeMap.maxKey?_mem hmax
+    rw [Std.ExtTreeMap.mem_iff_isSome_getElem?] at hmem
+    cases hget : (sub x x).coeffs[e]? with
+    | none => simp [hget] at hmem
+    | some v =>
+      -- v should be non-zero by invariant, but hc says v = 0
+      simp [hget] at hc
+      simp [hget, Std.ExtTreeMap.getD_eq_getD_getElem?, hc]
 
 notation "ε" => epsilon
 notation "H" => H
@@ -454,7 +529,7 @@ instance (x y : LC) : Decidable (x < y) :=
   inferInstanceAs (Decidable (signum (sub y x) > 0))
 
 noncomputable instance : LinearOrder LC where
-  le_refl _ := sorry
+  le_refl x := signum_sub_self x
   le_trans _ _ _ _ _ := sorry
   le_antisymm _ _ _ _ := sorry
   le_total _ _ := sorry
@@ -527,7 +602,23 @@ instance : ToString LC where
 
 /-- Leading exponent of scalar multiplication. -/
 theorem leadingExp_smul (c : Coeff) (x : LC) (hc : c ≠ 0) (hx : ¬x.coeffs.isEmpty) :
-    (c • x).leadingExp = x.leadingExp := sorry
+    (c • x).leadingExp = x.leadingExp := by
+  simp only [leadingExp, leadingTerm?]
+  have hc_beq : (c == 0) = false := beq_eq_false_iff_ne.mpr hc
+  simp only [HSMul.hSMul, smul, hc_beq, ite_false]
+  rw [maxKey?_map_exp]
+  cases hmax : x.coeffs.maxKey? with
+  | none =>
+    rw [Std.ExtTreeMap.maxKey?_eq_none_iff, Std.ExtTreeMap.isEmpty_iff] at hmax
+    exact absurd hmax hx
+  | some e =>
+    simp only
+    cases hget : x.coeffs.get? e with
+    | none =>
+      have h := get?_maxKey?_isSome hmax
+      exact absurd hget h
+    | some v =>
+      simp only [Std.ExtTreeMap.get?_eq_getElem?, Std.ExtTreeMap.getElem?_map, hget, Option.map_some']
 
 /-- Leading exponent of multiplication. -/
 theorem leadingExp_mul (x y : LC) (hx : ¬x.coeffs.isEmpty) (hy : ¬y.coeffs.isEmpty) :

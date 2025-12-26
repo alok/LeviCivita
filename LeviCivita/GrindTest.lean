@@ -23,6 +23,6 @@ theorem eq_iff_toHahnSeries_eq (x y : LC) : x = y ↔ toHahnSeries x = toHahnSer
 -- Now let's see if grind can prove commutativity of addition for LC
 theorem add_comm_lc (x y : LC) : x + y = y + x := by
   apply toHahnSeries_injective'
-  grind (config := { ring := false, linarith := false }) [add_comm]
+  grind (config := { ring := false, linarith := false }) [_root_.add_comm]
 
 end LeviCivita.GrindTest

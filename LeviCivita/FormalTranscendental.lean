@@ -52,14 +52,42 @@ theorem leadingExp_pow (δ : LC) (n : Nat) (hδ : ¬δ.coeffs.isEmpty) :
 theorem valuation_tendsto (δ : LC) (hδ : IsInfinitesimal δ) (hnonzero : ¬δ.coeffs.isEmpty) :
     ∀ (M : Exp), ∃ N : Nat, ∀ n ≥ N, (expTerm δ n).leadingExp < M := by
   intro M
-  have he_neg : δ.leadingExp < 0 := sorry
+  have he_neg : δ.leadingExp < 0 := by
+    unfold IsInfinitesimal at hδ
+    unfold leadingExp
+    cases h : δ.leadingTerm? with
+    | none =>
+      -- If leadingTerm? = none, then maxKey? = none, so isEmpty
+      exfalso
+      unfold leadingTerm? at h
+      cases hmax : δ.coeffs.maxKey? with
+      | none =>
+        have hempty : δ.coeffs.maxKey?.isNone = δ.coeffs.isEmpty :=
+          Std.ExtTreeMap.isNone_maxKey?_eq_isEmpty
+        simp only [hmax, Option.isNone_none] at hempty
+        exact hnonzero hempty.symm
+      | some e =>
+        have hne : δ.coeffs.get? e ≠ none := get?_maxKey?_isSome hmax
+        cases hget : δ.coeffs.get? e with
+        | none => exact absurd hget hne
+        | some c =>
+          -- leadingTerm? should be some ⟨e, c⟩, contradicting h : leadingTerm? = none
+          -- The dependent match in Lean makes this tricky to prove directly
+          sorry
+    | some t =>
+      simp only [h] at hδ
+      exact hδ
   
   -- Take N = ceil(M / δ.leadingExp) + 1
   let N := (M / δ.leadingExp).ceil.toNat + 1
   exists N
   intro n hn
   unfold expTerm
-  have h_fact_nz : ((List.range n |>.map (fun i => (i + 1 : Coeff)) |>.foldl (· * ·) 1)⁻¹ : Coeff) ≠ 0 := sorry
+  have h_fact_nz : ((List.range n |>.map (fun i => (i + 1 : Coeff)) |>.foldl (· * ·) 1)⁻¹ : Coeff) ≠ 0 := by
+    apply inv_ne_zero
+    -- The foldl computes n!, which is always positive
+    -- Complex to prove inline; n! > 0 for all n
+    sorry
   have h_pow_nz : ¬(δ ^ n).coeffs.isEmpty := sorry
   rw [leadingExp_smul _ _ h_fact_nz h_pow_nz]
   match n with

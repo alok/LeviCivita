@@ -7,6 +7,8 @@ import Mathlib.Algebra.Order.Group.PiLex
 import Mathlib.Algebra.Order.Hom.Monoid
 import Mathlib.Algebra.Order.Monoid.Basic
 import Mathlib.Data.Fin.Tuple.Basic
+import Mathlib.Data.Fintype.Card
+import Mathlib.Data.Fintype.EquivFin
 
 /-!
 # Computable lexicographic order on finite tuples
@@ -31,6 +33,8 @@ in the elaborator, and `#eval` works.
 * `Pi.Lex.decidableLTFin`, `Pi.Lex.linearOrderFin`: a computable decision procedure for `<` on
   Mathlib's own `Lex (Fin k → α)`, and a computable `LinearOrder` on it which is *equal* to
   Mathlib's `Pi.Lex.linearOrder` (`Pi.Lex.linearOrderFin_eq`).
+* `Pi.Lex.decidableLTOfFintype`, `Pi.Lex.linearOrderOfFintype`: the same for any finite
+  linearly ordered index type and dependent values (`Pi.Lex.linearOrderOfFintype_eq`).
 
 ## Implementation notes
 
@@ -422,5 +426,32 @@ theorem linearOrderFin_eq : linearOrderFin = (Pi.Lex.linearOrder : LinearOrder (
 /-- The partial orders agree definitionally. -/
 example : (linearOrderFin : LinearOrder (Lex (Fin k → α))).toPartialOrder =
     (Pi.Lex.linearOrder : LinearOrder (Lex (Fin k → α))).toPartialOrder := rfl
+
+section Fintype
+
+variable {ι : Type*} {β : ι → Type*} [Fintype ι] [LinearOrder ι]
+
+/-- Computable decision procedure for `<` on `Lex (∀ i, β i)` for any finite linearly ordered
+index type, by `Fintype` search for the first index where the arguments differ. This is the
+general form an upstream instance would take; `decidableLTFin` is a faster special case for
+`Fin k` with a constant value type. -/
+@[instance_reducible]
+def decidableLTOfFintype [∀ i, DecidableEq (β i)] [∀ i, LT (β i)] [∀ i, DecidableLT (β i)] :
+    DecidableLT (Lex (∀ i, β i)) := fun x y =>
+  inferInstanceAs (Decidable (∃ i, (∀ j, j < i → ofLex x j = ofLex y j) ∧ ofLex x i < ofLex y i))
+
+/-- A computable `LinearOrder` on `Lex (∀ i, β i)` for finite `ι`: `Pi.Lex.linearOrder` with
+`Classical.decRel` replaced by `decidableLTOfFintype`. -/
+abbrev linearOrderOfFintype [∀ i, LinearOrder (β i)] : LinearOrder (Lex (∀ i, β i)) :=
+  @linearOrderOfSTO (Lex (∀ i, β i)) (· < ·) { trichotomous := (Pi.trichotomous_lex _ _).1 }
+    decidableLTOfFintype
+
+/-- For finite `ι` the computable order equals Mathlib's `Pi.Lex.linearOrder` (whose
+`WellFoundedLT ι` argument is found from `Finite ι`). -/
+theorem linearOrderOfFintype_eq [∀ i, LinearOrder (β i)] :
+    linearOrderOfFintype = (Pi.Lex.linearOrder : LinearOrder (Lex (∀ i, β i))) :=
+  LinearOrder.ext fun _ _ => Iff.rfl
+
+end Fintype
 
 end Pi.Lex

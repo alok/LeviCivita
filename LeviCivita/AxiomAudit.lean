@@ -162,7 +162,8 @@ section M5
   FinLex.decidableEq FinLex.instLinearOrder FinLex.compare_eq_lexCmp FinLex.toLex_strictMono
   FinLex.instAddCommGroup FinLex.instIsOrderedCancelAddMonoid FinLex.single FinLex.single_apply
   FinLex.single_lt_single FinLex.single_pos FinLex.toLexOrderAddIso FinLex.toLexOrderIso
-  Pi.Lex.decidableLTFin Pi.Lex.linearOrderFin Pi.Lex.linearOrderFin_eq
+  Pi.Lex.decidableLTFin Pi.Lex.linearOrderFin Pi.Lex.linearOrderFin_eq Pi.Lex.decidableLTOfFintype
+  Pi.Lex.linearOrderOfFintype Pi.Lex.linearOrderOfFintype_eq
 
 -- `MultiEps`
 #assert_axioms Poly.epsI Poly.epsI_pos Poly.epsI_lt_epsI Poly.isInfinitesimal_epsI

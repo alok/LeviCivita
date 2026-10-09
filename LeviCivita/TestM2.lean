@@ -3,7 +3,6 @@ Copyright (c) 2026 Alok Singh. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 -/
 import LeviCivita.Poly
-import Mathlib.Algebra.Order.Group.PiLex
 
 /-!
 # Tests for M2: accessors, standard part, ε-AD, several infinitesimals
@@ -121,13 +120,12 @@ theorem aeval_eq_direct (x : P) : aeval x (X ^ 3 + 2 * X : Polynomial ℚ) = x ^
 theorem cube_expansion :
     (C 2 + ε : P) ^ 3 + 2 * (C 2 + ε) = 12 + 14 * ε + 6 * ε ^ 2 + ε ^ 3 := by decide +kernel
 
-/-! ### Two independent infinitesimals: `Γ = Lex (Fin 2 → ℤ)`
+/-! ### Two independent infinitesimals: `Γ = MultiEps 2 = FinLex 2 ℤ`
 
-Mathlib's `LinearOrder (Lex (∀ i, β i))` (`Pi.Lex.linearOrder`) is **noncomputable**: it uses
-`Classical.decRel` for decidability. `Poly` needs to decide `<` on exponents, so with that
-instance nothing can be `#eval`ed or `decide`d. We install a computable instance with the same
-`<` (`Pi.Lex`), deciding `<` by `Fintype` search over `Fin 2`. Its underlying `PartialOrder` is
-definitionally Mathlib's, so Mathlib's `Pi.Lex.isOrderedAddCancelMonoid` applies unchanged.
+`FinLex k ℤ` (`LeviCivita/ForMathlib/Order/FinLex.lean`) is `ℤ`-tuples with a *computable*
+lexicographic `LinearOrder`. (Mathlib's `Lex (Fin 2 → ℤ)` order is noncomputable; until M5 this
+file installed a local computable instance on it.) It is order-isomorphic to Mathlib's
+`Lex (Fin 2 → ℤ)` (`FinLex.toLexOrderAddIso`).
 
 Ordering: `ε₁ = ε^(1,0)`, `ε₂ = ε^(0,1)`. The exponent `(1,0)` is lexicographically *larger*
 than `(0,1)` (first coordinate decides), and a larger exponent means a *smaller* magnitude. So
@@ -135,20 +133,23 @@ than `(0,1)` (first coordinate decides), and a larger exponent means a *smaller*
 to `ε₂`. -/
 
 /-- Exponents for two independent infinitesimals. -/
-abbrev G2 := Lex (Fin 2 → ℤ)
+abbrev G2 := MultiEps 2
 
-/-- Computable linear order on `Lex (Fin 2 → ℤ)`, with the same `<` as Mathlib's. -/
-instance (priority := high) lexLinearOrder : LinearOrder G2 :=
-  @linearOrderOfSTO G2 (· < ·) { trichotomous := (Pi.trichotomous_lex _ _).1 }
-    (fun x y => inferInstanceAs
-      (Decidable (∃ i, (∀ j, j < i → ofLex x j = ofLex y j) ∧ ofLex x i < ofLex y i)))
+open FinLex (toFinLex)
 
 /-- The bigger infinitesimal is `ε₂`; `ε₁` is infinitely smaller. -/
-abbrev ε₁ : Poly G2 ℚ := single (toLex ![1, 0]) 1
-abbrev ε₂ : Poly G2 ℚ := single (toLex ![0, 1]) 1
+abbrev ε₁ : Poly G2 ℚ := single (toFinLex ![1, 0]) 1
+abbrev ε₂ : Poly G2 ℚ := single (toFinLex ![0, 1]) 1
+
+/-- `ε₁, ε₂` are the library's `epsI 0, epsI 1`. -/
+theorem eps1_eq_epsI : ε₁ = epsI 0 := by decide +kernel
 
 /-- info: 1 -/
-#guard_msgs in #eval (ε₁ * ε₂).coeff (toLex ![1, 1])
+#guard_msgs in #eval (ε₁ * ε₂).coeff (toFinLex ![1, 1])
+
+-- `Repr` works for `Poly (MultiEps 2) ℚ`.
+/-- info: 1 ε^![0, 1] + 1 ε^![1, 0] + 2 ε^![1, 1] -/
+#guard_msgs in #eval ε₁ + ε₂ + 2 * ε₁ * ε₂
 
 /-- info: (true, false, true) -/
 #guard_msgs in #eval (decide (ε₁ < ε₂), decide (ε₂ < ε₁), decide (ε₁ < ε₂ ^ 5))
@@ -169,9 +170,16 @@ theorem eps1_isInfinitesimal : ε₁.IsInfinitesimal := by decide +kernel
 
 /-- With `ℤ` coefficients plain `decide` works here too. -/
 theorem int_eps1_lt_eps2 :
-    (single (toLex ![1, 0]) 1 : Poly G2 ℤ) < single (toLex ![0, 1]) 1 := by decide
+    (single (toFinLex ![1, 0]) 1 : Poly G2 ℤ) < single (toFinLex ![0, 1]) 1 := by decide
 
 theorem int_eps1_mul_eps2_pos :
-    (0 : Poly G2 ℤ) < single (toLex ![1, 0]) 1 * single (toLex ![0, 1]) 1 := by decide
+    (0 : Poly G2 ℤ) < single (toFinLex ![1, 0]) 1 * single (toFinLex ![0, 1]) 1 := by decide
+
+/-- Plain `decide`, `ℤ` coefficients: `ε₁ < ε₂ ^ 3`. -/
+theorem int_eps1_lt_eps2_pow :
+    (epsI 0 : Poly G2 ℤ) < epsI 1 ^ 3 := by decide
+
+/-- The same fact via the general theorem (no evaluation). -/
+theorem eps1_lt_eps2' : (epsI 0 : Poly G2 ℚ) < epsI 1 := epsI_lt_epsI (by decide)
 
 end LeviCivita.TestM2

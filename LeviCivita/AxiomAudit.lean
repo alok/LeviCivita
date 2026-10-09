@@ -65,9 +65,9 @@ open LeviCivita LeviCivita.Poly LeviCivita.Test LeviCivita.TestM2
   not_isInfinitesimal_one not_isFinite_H isFinite_three_add_eps not_isInfinitesimal_three_add_eps
   isInfinitesimal_eps_sub_eps_sq int_isInfinitesimal_eps int_not_isFinite_H stdPart_three_add_eps
   stdPart_mul_example abs_eps_lt one_sub_eps_bounded ad_example_kernel ad_example_theorem
-  aeval_eq_direct cube_expansion lexLinearOrder eps1_lt_eps2 eps1_pos eps1_mul_eps2_pos
+  aeval_eq_direct cube_expansion eps1_lt_eps2 eps1_pos eps1_mul_eps2_pos
   eps1_mul_eps2_lt_eps1 eps1_lt_eps2_pow eps2_lt_one_thousandth eps1_isInfinitesimal
-  int_eps1_lt_eps2 int_eps1_mul_eps2_pos
+  int_eps1_lt_eps2 int_eps1_mul_eps2_pos eps1_eq_epsI int_eps1_lt_eps2_pow eps1_lt_eps2'
 
 /-! ### M3 -/
 
@@ -149,3 +149,22 @@ open LeviCivita.Approx LeviCivita.TestM4
 
 
 end M4
+
+/-! ### M5 -/
+
+section M5
+
+-- `LeviCivita/ForMathlib/Order/FinLex.lean` (imports only Mathlib; audited here)
+#assert_axioms Fin.lexCmp Fin.lexCmp_eq_eq_iff Fin.lexCmp_eq_lt_iff Fin.lexCmp_swap
+  FinLex.instFunLike FinLex.ext FinLex.equivFun FinLex.instPartialOrder FinLex.lt_iff_toLex_lt
+  FinLex.le_iff_toLex_le FinLex.lt_iff_exists FinLex.le_iff_eq_or_lt FinLex.lexCmp_eq_lt_iff
+  FinLex.lexCmp_eq_eq_iff FinLex.lexCmp_ne_gt_iff FinLex.decidableLE FinLex.decidableLT
+  FinLex.decidableEq FinLex.instLinearOrder FinLex.compare_eq_lexCmp FinLex.toLex_strictMono
+  FinLex.instAddCommGroup FinLex.instIsOrderedCancelAddMonoid FinLex.single FinLex.single_apply
+  FinLex.single_lt_single FinLex.single_pos FinLex.toLexOrderAddIso FinLex.toLexOrderIso
+  Pi.Lex.decidableLTFin Pi.Lex.linearOrderFin Pi.Lex.linearOrderFin_eq
+
+-- `MultiEps`
+#assert_axioms Poly.epsI Poly.epsI_pos Poly.epsI_lt_epsI Poly.isInfinitesimal_epsI
+
+end M5

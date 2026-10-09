@@ -1,7 +1,8 @@
 /-
-Benchmark (not part of `lake build`): Float vs exact predicates vs SoS over `Poly ℤ ℤ`.
+Benchmark (not part of `lake build`): Float vs exact predicates vs SoS over `Poly ℤ ℤ`, and
+(for `n ≤ 2000`) SoS with independent infinitesimals over `Poly (MultiEps (2n)) ℤ`.
 
-Run: `lake env lean --run bench/Bench.lean [nPoints] [nQueries] [gridSize]`
+Run: `lake env lean --run bench/Bench.lean [nPoints] [nQueries] [gridSize] [nMultiQueries]`
 
 This runs in the Lean *interpreter* (a native `lean_exe` would have to compile every imported
 Mathlib module to C), so absolute numbers are pessimistic; ratios are what matter.
@@ -42,7 +43,7 @@ def timeIt (label : String) (m : Nat) (act : Unit → IO Int) : IO Unit := do
   let ms := (t1 - t0).toFloat / 1e6
   IO.println s!"{label}: {ms} ms total, {ms * 1000 / m.toFloat} µs/query (checksum {r})"
 
-def bench (n : Nat) (hn : 0 < n) (m grid : Nat) : IO Unit := do
+def bench (n : Nat) (hn : 0 < n) (m grid mMulti : Nat) : IO Unit := do
   let (pts, qs) := mkInput n m grid
   IO.println s!"n = {n} points, m = {m} queries, coordinates in [0, {grid})"
   let xi : Fin n → Fin 2 → Int := fun i j => (pts[i.1]!)[j.1]!
@@ -71,9 +72,32 @@ def bench (n : Nat) (hn : 0 < n) (m grid : Nat) : IO Unit := do
     mix acc <| (incircleSoS 4 xi (fin i) (fin k) (fin l) (fin o)).sign) 0
   timeIt "incircle  lazy SoS       " m fun _ => pure <| qs.foldl (fun (acc : Int) (i, k, l, o) =>
     mix acc <| ((incircleLazy 4 xi (fin i) (fin k) (fin l) (fin o)).getD 0)) 0
+  -- M5: one infinitesimal per coordinate, `Γ = MultiEps (2n)`. Exponent vectors have `2n`
+  -- entries, so this runs only for `n ≤ 2000`, on the first `mMulti` queries. On that subset
+  -- the b-power SoS is timed again, and sign agreement between the two schemes is counted.
+  if n ≤ 2000 then
+    let sub := qs.extract 0 mMulti
+    let mm := sub.size
+    IO.println s!"multi-ε comparison on the first {mm} queries:"
+    timeIt "orient2d  SoS Poly ℤ ℤ   " mm fun _ => pure <| sub.foldl (fun (acc : Int) (i, k, l, _) =>
+      mix acc <| (orient2dSoS 4 xi (fin i) (fin k) (fin l)).sign) 0
+    timeIt "orient2d  SoS multi-ε    " mm fun _ => pure <| sub.foldl (fun (acc : Int) (i, k, l, _) =>
+      mix acc <| (orient2dSoSMulti xi (fin i) (fin k) (fin l)).sign) 0
+    timeIt "incircle  SoS Poly ℤ ℤ   " mm fun _ => pure <| sub.foldl (fun (acc : Int) (i, k, l, o) =>
+      mix acc <| (incircleSoS 4 xi (fin i) (fin k) (fin l) (fin o)).sign) 0
+    timeIt "incircle  SoS multi-ε    " mm fun _ => pure <| sub.foldl (fun (acc : Int) (i, k, l, o) =>
+      mix acc <| (incircleSoSMulti xi (fin i) (fin k) (fin l) (fin o)).sign) 0
+    let agree2 := sub.foldl (fun (acc : Nat) (i, k, l, _) =>
+      if (orient2dSoS 4 xi (fin i) (fin k) (fin l)).sign ==
+        (orient2dSoSMulti xi (fin i) (fin k) (fin l)).sign then acc + 1 else acc) 0
+    let agreeC := sub.foldl (fun (acc : Nat) (i, k, l, o) =>
+      if (incircleSoS 4 xi (fin i) (fin k) (fin l) (fin o)).sign ==
+        (incircleSoSMulti xi (fin i) (fin k) (fin l) (fin o)).sign then acc + 1 else acc) 0
+    IO.println s!"sign agreement b-power vs multi-ε: orient2d {agree2}/{mm}, incircle {agreeC}/{mm}"
 
 def main (args : List String) : IO Unit := do
   let n := (args[0]? >>= String.toNat?).getD 10000
   let m := (args[1]? >>= String.toNat?).getD 10000
   let grid := (args[2]? >>= String.toNat?).getD 1000000
-  if h : 4 ≤ n then bench n (by omega) m grid else IO.println "need at least 4 points"
+  let mMulti := (args[3]? >>= String.toNat?).getD 20
+  if h : 4 ≤ n then bench n (by omega) m grid mMulti else IO.println "need at least 4 points"

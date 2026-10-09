@@ -213,6 +213,12 @@ instance [LinearOrder Γ] [Zero R] [Repr Γ] [Repr R] : Repr (Approx Γ R) where
 section Defs
 variable [LinearOrder Γ] [Zero R]
 
+theorem ext_iff' {a b : Approx Γ R} : a = b ↔ a.val = b.val ∧ a.prec = b.prec := by
+  cases a; cases b; simp
+
+instance [DecidableEq R] : DecidableEq (Approx Γ R) := fun _ _ =>
+  decidable_of_iff _ ext_iff'.symm
+
 /-- The exact approximation of a `Poly`. -/
 def exact (p : Poly Γ R) : Approx Γ R := ⟨p, ⊤⟩
 

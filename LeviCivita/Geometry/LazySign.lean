@@ -183,6 +183,253 @@ theorem truncLT_mul {c : Γ} {p q : Poly Γ R} (hp : p.IsFinite) (hq : q.IsFinit
 
 end Spec
 
+section Sign
+variable [AddCommMonoid Γ] [LinearOrder Γ] [IsOrderedCancelAddMonoid Γ] [CommRing R]
+  [DecidableEq R]
+
+/-- A nonzero truncation keeps the leading term, hence the sign. -/
+theorem leadCoeff_truncLT {c : Γ} {p : Poly Γ R} (h : p.truncLT c ≠ 0) :
+    (p.truncLT c).leadCoeff = p.leadCoeff := by
+  obtain ⟨_ | ⟨t, l⟩, s, n⟩ := p
+  · rfl
+  · by_cases ht : t.1 < c
+    · simp only [leadCoeff, truncLT]
+      rw [List.filter_cons_of_pos (by simpa using ht)]
+    · exfalso
+      apply h
+      ext1
+      simp only [terms_truncLT, terms_zero, List.filter_eq_nil_iff, decide_eq_true_eq, not_lt]
+      intro u hu
+      rcases List.mem_cons.1 hu with rfl | hu
+      · exact not_lt.1 ht
+      · exact (not_lt.1 ht).trans ((List.pairwise_cons.1 s).1 u hu).le
+
+theorem sign_truncLT [LinearOrder R] {c : Γ} {p : Poly Γ R} (h : p.truncLT c ≠ 0) :
+    (p.truncLT c).sign = p.sign := by
+  unfold sign; rw [leadCoeff_truncLT h]
+
+theorem truncLT_eq_self {c : Γ} {p : Poly Γ R} (h : ∀ t ∈ p.terms, t.1 < c) :
+    p.truncLT c = p := by
+  ext1; exact List.filter_eq_self.2 fun t ht => by simpa using h t ht
+
+theorem isFinite_truncLT {p : Poly Γ R} (hp : p.IsFinite) (c : Γ) : (p.truncLT c).IsFinite := by
+  obtain ⟨_ | ⟨t, l⟩, s, n⟩ := p
+  · exact hp
+  · have h0 : (0 : Γ) ≤ t.1 := WithTop.coe_le_coe.1 hp
+    unfold IsFinite leadExp
+    split
+    · exact le_top
+    · rename_i u l' hl
+      have hu : u ∈ (Poly.truncLT c ⟨t :: l, s, n⟩).terms := by rw [hl]; exact List.mem_cons_self
+      rw [terms_truncLT] at hu
+      exact WithTop.coe_le_coe.2 (IsFinite.nonneg_of_mem hp u (List.mem_of_mem_filter hu))
+
+end Sign
+
 end Poly
+
+/-! ### Lazy sign evaluation -/
+
+namespace LazySign
+
+open Poly
+
+variable {Γ R : Type*} [AddCommMonoid Γ] [LinearOrder Γ] [IsOrderedCancelAddMonoid Γ]
+  [CommRing R] [DecidableEq R]
+
+/-- Ring expressions over `Poly` leaves. The geometric predicates, being defined for any type
+with `+ - *`, can be instantiated at `Expr` directly (`orient2d (K := Expr Γ R) …`). -/
+inductive Expr (Γ R : Type*) [LinearOrder Γ] [Zero R] where
+  | leaf : Poly Γ R → Expr Γ R
+  | add : Expr Γ R → Expr Γ R → Expr Γ R
+  | sub : Expr Γ R → Expr Γ R → Expr Γ R
+  | neg : Expr Γ R → Expr Γ R
+  | mul : Expr Γ R → Expr Γ R → Expr Γ R
+
+namespace Expr
+
+instance [Zero R] : Add (Expr Γ R) := ⟨add⟩
+instance [Zero R] : Sub (Expr Γ R) := ⟨sub⟩
+instance [Zero R] : Neg (Expr Γ R) := ⟨neg⟩
+instance [Zero R] : Mul (Expr Γ R) := ⟨mul⟩
+
+/-- Exact evaluation. -/
+def eval : Expr Γ R → Poly Γ R
+  | leaf p => p
+  | add a b => a.eval + b.eval
+  | sub a b => a.eval - b.eval
+  | neg a => -a.eval
+  | mul a b => a.eval * b.eval
+
+/-- Evaluation with every intermediate result truncated below `ε^c`. -/
+def evalTrunc (c : Γ) : Expr Γ R → Poly Γ R
+  | leaf p => p.truncLT c
+  | add a b => a.evalTrunc c + b.evalTrunc c
+  | sub a b => a.evalTrunc c - b.evalTrunc c
+  | neg a => -a.evalTrunc c
+  | mul a b => mulTrunc c (a.evalTrunc c) (b.evalTrunc c)
+
+/-- All leaves are finite (no negative exponents). -/
+def LeavesFinite : Expr Γ R → Prop
+  | leaf p => p.IsFinite
+  | add a b => a.LeavesFinite ∧ b.LeavesFinite
+  | sub a b => a.LeavesFinite ∧ b.LeavesFinite
+  | neg a => a.LeavesFinite
+  | mul a b => a.LeavesFinite ∧ b.LeavesFinite
+
+@[simp] theorem eval_leaf (p : Poly Γ R) : (leaf p).eval = p := rfl
+@[simp] theorem eval_add' (a b : Expr Γ R) : (a + b).eval = a.eval + b.eval := rfl
+@[simp] theorem eval_sub' (a b : Expr Γ R) : (a - b).eval = a.eval - b.eval := rfl
+@[simp] theorem eval_neg' (a : Expr Γ R) : (-a).eval = -a.eval := rfl
+@[simp] theorem eval_mul' (a b : Expr Γ R) : (a * b).eval = a.eval * b.eval := rfl
+
+@[simp] theorem leavesFinite_leaf (p : Poly Γ R) : (leaf p).LeavesFinite ↔ p.IsFinite := Iff.rfl
+@[simp] theorem leavesFinite_add' (a b : Expr Γ R) :
+    (a + b).LeavesFinite ↔ a.LeavesFinite ∧ b.LeavesFinite := Iff.rfl
+@[simp] theorem leavesFinite_sub' (a b : Expr Γ R) :
+    (a - b).LeavesFinite ↔ a.LeavesFinite ∧ b.LeavesFinite := Iff.rfl
+@[simp] theorem leavesFinite_neg' (a : Expr Γ R) : (-a).LeavesFinite ↔ a.LeavesFinite := Iff.rfl
+@[simp] theorem leavesFinite_mul' (a b : Expr Γ R) :
+    (a * b).LeavesFinite ↔ a.LeavesFinite ∧ b.LeavesFinite := Iff.rfl
+
+theorem LeavesFinite.eval {e : Expr Γ R} (h : e.LeavesFinite) : e.eval.IsFinite := by
+  induction e with
+  | leaf p => exact h
+  | add a b iha ihb => exact (iha h.1).add (ihb h.2)
+  | sub a b iha ihb => exact (iha h.1).sub (ihb h.2)
+  | neg a iha => exact (iha h).neg
+  | mul a b iha ihb => exact (iha h.1).mul (ihb h.2)
+
+/-- **Truncated evaluation is the truncation of exact evaluation**, for finite leaves. -/
+theorem evalTrunc_eq {c : Γ} {e : Expr Γ R} (h : e.LeavesFinite) :
+    e.evalTrunc c = e.eval.truncLT c := by
+  induction e with
+  | leaf p => rfl
+  | add a b iha ihb => simp only [evalTrunc, eval, iha h.1, ihb h.2, Poly.truncLT_add]
+  | sub a b iha ihb => simp only [evalTrunc, eval, iha h.1, ihb h.2, Poly.truncLT_sub]
+  | neg a iha => simp only [evalTrunc, eval, iha h, Poly.truncLT_neg]
+  | mul a b iha ihb =>
+    simp only [evalTrunc, eval, iha h.1, ihb h.2]
+    rw [mulTrunc_truncLT h.1.eval h.2.eval, mulTrunc_eq]
+
+end Expr
+
+open Expr
+
+/-- Lazy sign at precision `c`: the sign of the truncated value if it is nonzero, else `none`
+(the value is `0` or needs more precision). -/
+def lazySign [LinearOrder R] (c : Γ) (e : Expr Γ R) : Option ℤ :=
+  if e.evalTrunc c = 0 then none else some (e.evalTrunc c).sign
+
+/-- **Soundness.** -/
+theorem lazySign_sound [LinearOrder R] {c : Γ} {e : Expr Γ R} (h : e.LeavesFinite) {s : ℤ}
+    (hs : lazySign c e = some s) : e.eval.sign = s := by
+  unfold lazySign at hs
+  rw [evalTrunc_eq h] at hs
+  split_ifs at hs with h0
+  cases hs
+  exact (sign_truncLT h0).symm
+
+/-- **Completeness.** Once `c` exceeds every exponent of the exact value, `lazySign` returns the
+exact sign (and `none` only for the value `0`). -/
+theorem lazySign_complete [LinearOrder R] {c : Γ} {e : Expr Γ R} (h : e.LeavesFinite)
+    (hc : ∀ t ∈ e.eval.terms, t.1 < c) :
+    lazySign c e = if e.eval = 0 then none else some e.eval.sign := by
+  unfold lazySign
+  simp only [evalTrunc_eq h, truncLT_eq_self hc]
+
+theorem lazySign_complete_of_ne_zero [LinearOrder R] {c : Γ} {e : Expr Γ R}
+    (h : e.LeavesFinite) (hc : ∀ t ∈ e.eval.terms, t.1 < c) (h0 : e.eval ≠ 0) :
+    lazySign c e = some e.eval.sign := by
+  rw [lazySign_complete h hc, ite_eq_right h0]
+
+/-! ### Iterative driver (`Γ = ℤ`) -/
+
+section Driver
+variable {R : Type*} [CommRing R] [DecidableEq R] [LinearOrder R]
+
+/-- Try precisions `c, 2c, 4c, …`, at most `fuel` times. Start with `c = 1`: the first pass
+keeps only the `ε^0` terms, i.e. it is the plain unperturbed computation. -/
+def lazySignIter (e : Expr ℤ R) : ℕ → ℤ → Option ℤ
+  | 0, _ => none
+  | fuel + 1, c =>
+    match lazySign c e with
+    | some s => some s
+    | none => lazySignIter e fuel (2 * c)
+
+theorem lazySignIter_sound {e : Expr ℤ R} (h : e.LeavesFinite) :
+    ∀ {fuel : ℕ} {c s : ℤ}, lazySignIter e fuel c = some s → e.eval.sign = s
+  | 0, _, _, hs => by simp [lazySignIter] at hs
+  | fuel + 1, c, s, hs => by
+    unfold lazySignIter at hs
+    split at hs
+    · rename_i s' hs'
+      cases hs
+      exact lazySign_sound h hs'
+    · exact lazySignIter_sound h hs
+
+/-- **Completeness of the driver**: if `2^fuel · c` exceeds every exponent of a nonzero value,
+the driver returns its sign. -/
+theorem lazySignIter_complete {e : Expr ℤ R} (h : e.LeavesFinite) (h0 : e.eval ≠ 0) :
+    ∀ {fuel : ℕ} {c : ℤ}, (∀ t ∈ e.eval.terms, t.1 < 2 ^ fuel * c) →
+      lazySignIter e (fuel + 1) c = some e.eval.sign
+  | 0, c, hc => by
+    simp only [pow_zero, one_mul] at hc
+    simp [lazySignIter, lazySign_complete_of_ne_zero h hc h0]
+  | fuel + 1, c, hc => by
+    unfold lazySignIter
+    split
+    · rename_i s hs
+      rw [lazySign_sound h hs]
+    · exact lazySignIter_complete h h0 (fun t ht => by
+        have := hc t ht
+        rw [pow_succ] at this
+        linarith)
+
+end Driver
+
+/-! ### Lazy SoS `orient2d` -/
+
+section Orient2d
+open Geometry
+variable {R : Type*} [CommRing R] [DecidableEq R] {n : ℕ}
+
+/-- The SoS-perturbed `orient2d` as an expression tree (the generic formula at `K = Expr`). -/
+def orient2dExpr (x : Fin n → Fin 2 → R) (i k l : Fin n) : Expr ℤ R :=
+  orient2d (fun j => leaf (sosPoint x i j)) (fun j => leaf (sosPoint x k j))
+    (fun j => leaf (sosPoint x l j))
+
+theorem eval_orient2dExpr (x : Fin n → Fin 2 → R) (i k l : Fin n) :
+    (orient2dExpr x i k l).eval = orient2dSoS x i k l := by
+  simp [orient2dExpr, orient2d, orient2dSoS]
+
+theorem leavesFinite_orient2dExpr (x : Fin n → Fin 2 → R) (i k l : Fin n) :
+    (orient2dExpr x i k l).LeavesFinite := by
+  simp [orient2dExpr, orient2d, isFinite_sosPoint]
+
+/-- Lazy SoS `orient2d`: exact sign of the perturbed predicate, computing perturbation terms only
+when the unperturbed value vanishes. -/
+def orient2dLazy [LinearOrder R] (x : Fin n → Fin 2 → R) (i k l : Fin n) (fuel : ℕ := 64) :
+    Option ℤ :=
+  lazySignIter (orient2dExpr x i k l) fuel 1
+
+theorem orient2dLazy_sound [LinearOrder R] {x : Fin n → Fin 2 → R} {i k l : Fin n} {fuel : ℕ}
+    {s : ℤ} (h : orient2dLazy x i k l fuel = some s) : (orient2dSoS x i k l).sign = s := by
+  rw [← eval_orient2dExpr]
+  exact lazySignIter_sound (leavesFinite_orient2dExpr x i k l) h
+
+/-- With enough fuel the lazy evaluator returns the SoS sign, which is never `0`. -/
+theorem orient2dLazy_complete [LinearOrder R] [Nontrivial R] (x : Fin n → Fin 2 → R)
+    {i k l : Fin n} (hik : i ≠ k) (hil : i ≠ l) (hkl : k ≠ l) {fuel : ℕ}
+    (hc : ∀ t ∈ (orient2dSoS x i k l).terms, t.1 < 2 ^ fuel) :
+    orient2dLazy x i k l (fuel + 1) = some (orient2dSoS x i k l).sign := by
+  have := lazySignIter_complete (leavesFinite_orient2dExpr x i k l)
+    (by rw [eval_orient2dExpr]; exact orient2dSoS_ne_zero x hik hil hkl)
+    (fuel := fuel) (c := 1) (by rw [eval_orient2dExpr]; simpa using hc)
+  rwa [eval_orient2dExpr] at this
+
+end Orient2d
+
+end LazySign
 
 end LeviCivita

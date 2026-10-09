@@ -7,6 +7,7 @@ import LeviCivita.Poly.Std
 import Mathlib.Algebra.MvPolynomial.CommRing
 import Mathlib.Algebra.MvPolynomial.Degrees
 import Mathlib.Combinatorics.Colex
+import Mathlib.Tactic.Ring
 
 set_option linter.unusedSectionVars false
 
@@ -16,15 +17,90 @@ open Poly MvPolynomial
 
 variable {R : Type*} [CommRing R] [DecidableEq R]
 
+section Digits
+
+/-! ### Base-`b` digits
+
+A finite sum `∑ dᵢ bʷ⁽ⁱ⁾` with digits `dᵢ < b` and distinct positions `w i` determines the
+digits (`digit_extract`). -/
+
+theorem digit_sum_lt {ι : Type*} {b : ℕ} (hb : 0 < b) (w : ι → ℕ) (d : ι → ℕ) :
+    ∀ (W : ℕ) (T : Finset ι), Set.InjOn w T → (∀ i ∈ T, w i < W) → (∀ i ∈ T, d i < b) →
+      ∑ i ∈ T, d i * b ^ w i < b ^ W := by
+  classical
+  intro W
+  induction W with
+  | zero =>
+    intro T _ hW _
+    rcases T.eq_empty_or_nonempty with rfl | ⟨i, hi⟩
+    · simp
+    · exact absurd (hW i hi) (Nat.not_lt_zero _)
+  | succ W ih =>
+    intro T hinj hW hd
+    rw [← Finset.sum_filter_add_sum_filter_not T (fun i => w i < W)]
+    have h1 := ih (T.filter fun i => w i < W) (hinj.mono (Finset.coe_subset.2 (Finset.filter_subset _ _)))
+      (by simp) (fun i hi => hd i (Finset.mem_of_mem_filter i hi))
+    have hc : (T.filter fun i => ¬ w i < W).card ≤ 1 := by
+      rw [Finset.card_le_one]
+      intro x hx y hy
+      simp only [Finset.mem_filter] at hx hy
+      exact hinj hx.1 hy.1 (by have := hW x hx.1; have := hW y hy.1; omega)
+    have h2 : ∑ i ∈ T.filter (fun i => ¬ w i < W), d i * b ^ w i ≤ (b - 1) * b ^ W := by
+      refine (Finset.sum_le_card_nsmul _ _ ((b - 1) * b ^ W) fun i hi => ?_).trans ?_
+      · simp only [Finset.mem_filter] at hi
+        have hwx : w i = W := by have := hW i hi.1; omega
+        rw [hwx]
+        exact Nat.mul_le_mul_right _ (by have := hd i hi.1; omega)
+      · rw [smul_eq_mul]
+        exact (Nat.mul_le_mul_right _ hc).trans (by simp)
+    have hbW : 0 < b ^ W := pow_pos hb W
+    have : b ^ (W + 1) = b ^ W + (b - 1) * b ^ W := by
+      rw [pow_succ]; cases b with
+      | zero => omega
+      | succ b => simp; ring
+    omega
+
+theorem digit_extract {ι : Type*} {b : ℕ} (hb : 0 < b) {w : ι → ℕ} {d : ι → ℕ} {s : Finset ι}
+    (hw : Set.InjOn w s) (hd : ∀ i ∈ s, d i < b) {k : ι} (hk : k ∈ s) :
+    (∑ i ∈ s, d i * b ^ w i) / b ^ w k % b = d k := by
+  classical
+  have hsplit : ∑ i ∈ s, d i * b ^ w i = ∑ i ∈ s.filter (fun i => w i < w k), d i * b ^ w i
+      + b ^ w k * (d k + b * ((∑ i ∈ s.filter (fun i => w k < w i), d i * b ^ w i) / b ^ (w k + 1))) := by
+    have hU : b ^ (w k + 1) ∣ ∑ i ∈ s.filter (fun i => w k < w i), d i * b ^ w i :=
+      Finset.dvd_sum fun i hi => Dvd.dvd.mul_left
+        (pow_dvd_pow b (by simp only [Finset.mem_filter] at hi; omega)) _
+    have hE : s.filter (fun i => ¬ w i < w k) = insert k (s.filter fun i => w k < w i) := by
+      ext i
+      simp only [Finset.mem_filter, Finset.mem_insert, not_lt]
+      constructor
+      · rintro ⟨hi, hle⟩
+        rcases hle.lt_or_eq with hlt | heq
+        · exact Or.inr ⟨hi, hlt⟩
+        · exact Or.inl (hw hi hk heq.symm)
+      · rintro (rfl | ⟨hi, hlt⟩)
+        · exact ⟨hk, le_rfl⟩
+        · exact ⟨hi, hlt.le⟩
+    obtain ⟨Q, hQ⟩ := hU
+    rw [← Finset.sum_filter_add_sum_filter_not s (fun i => w i < w k), hE,
+      Finset.sum_insert (by simp), hQ, Nat.mul_div_cancel_left _ (pow_pos hb _)]
+    ring
+  have hlow := digit_sum_lt hb w d (w k) (s.filter fun i => w i < w k)
+    (hw.mono (Finset.coe_subset.2 (Finset.filter_subset _ _))) (by simp)
+    (fun i hi => hd i (Finset.mem_of_mem_filter i hi))
+  rw [hsplit, Nat.add_mul_div_left _ _ (pow_pos hb _), Nat.div_eq_of_lt hlow, zero_add,
+    Nat.add_mul_mod_self_left, Nat.mod_eq_of_lt (hd k hk)]
+
+end Digits
+
 section Key
 variable {σ : Type*}
 
-/-- The SoS substitution: variable `k` ↦ `ε^(2^(w k))`. -/
-noncomputable def sosSubst (w : σ → ℕ) : MvPolynomial σ R →ₐ[R] Poly ℤ R :=
-  aeval fun k => single ((2 ^ w k : ℕ) : ℤ) 1
+/-- The SoS substitution: variable `k` ↦ `ε^(b^(w k))`. -/
+noncomputable def sosSubst (b : ℕ) (w : σ → ℕ) : MvPolynomial σ R →ₐ[R] Poly ℤ R :=
+  aeval fun k => single ((b ^ w k : ℕ) : ℤ) 1
 
-/-- The exponent of the monomial `m` under `sosSubst w`. -/
-def sosExpo (w : σ → ℕ) (m : σ →₀ ℕ) : ℕ := ∑ i ∈ m.support, m i * 2 ^ w i
+/-- The exponent of the monomial `m` under `sosSubst b w`. -/
+def sosExpo (b : ℕ) (w : σ → ℕ) (m : σ →₀ ℕ) : ℕ := ∑ i ∈ m.support, m i * b ^ w i
 
 theorem prod_single_pow (s : Finset σ) (a : σ → ℤ) (d : σ → ℕ) :
     ∏ i ∈ s, (HahnSeries.single (a i) (1 : R) : HahnSeries ℤ R) ^ d i =
@@ -36,10 +112,10 @@ theorem prod_single_pow (s : Finset σ) (a : σ → ℤ) (d : σ → ℕ) :
     rw [Finset.prod_insert hi, Finset.sum_insert hi, ih, HahnSeries.single_pow,
       HahnSeries.single_mul_single, one_pow, one_mul]
 
-theorem toHahn_sosSubst (w : σ → ℕ) (D : MvPolynomial σ R) :
-    toHahn (sosSubst w D) =
-      ∑ m ∈ D.support, HahnSeries.single ((sosExpo w m : ℕ) : ℤ) (D.coeff m) := by
-  have h1 : toHahn (sosSubst w D) = toHahnAlg (sosSubst w D) := rfl
+theorem toHahn_sosSubst (b : ℕ) (w : σ → ℕ) (D : MvPolynomial σ R) :
+    toHahn (sosSubst b w D) =
+      ∑ m ∈ D.support, HahnSeries.single ((sosExpo b w m : ℕ) : ℤ) (D.coeff m) := by
+  have h1 : toHahn (sosSubst b w D) = toHahnAlg (sosSubst b w D) := rfl
   rw [h1, sosSubst, ← AlgHom.comp_apply, comp_aeval, aeval_def, eval₂_eq]
   refine Finset.sum_congr rfl fun m _ => ?_
   simp only [toHahnAlg_apply, toHahn_single]
@@ -48,42 +124,47 @@ theorem toHahn_sosSubst (w : σ → ℕ) (D : MvPolynomial σ R) :
   congr 1
   simp [sosExpo]
 
-theorem sosExpo_injOn {w : σ → ℕ} (hw : Function.Injective w) {m m' : σ →₀ ℕ}
-    (hm : ∀ k, m k ≤ 1) (hm' : ∀ k, m' k ≤ 1) (h : sosExpo w m = sosExpo w m') : m = m' := by
-  have key : ∀ m : σ →₀ ℕ, (∀ k, m k ≤ 1) →
-      sosExpo w m = ∑ j ∈ m.support.map ⟨w, hw⟩, 2 ^ j := by
-    intro m hm
-    rw [Finset.sum_map, sosExpo]
-    refine Finset.sum_congr rfl fun i hi => ?_
-    have : m i = 1 := by have := hm i; have := Finsupp.mem_support_iff.1 hi; omega
-    simp [this]
-  rw [key m hm, key m' hm'] at h
-  have hs := Finset.map_injective _ (Finset.geomSum_injective le_rfl h)
+theorem sosExpo_eq_sum_of_subset (b : ℕ) (w : σ → ℕ) {m : σ →₀ ℕ} {s : Finset σ}
+    (hs : m.support ⊆ s) : sosExpo b w m = ∑ i ∈ s, m i * b ^ w i :=
+  Finset.sum_subset hs fun i _ hi => by rw [Finsupp.notMem_support_iff.1 hi, zero_mul]
+
+/-- Monomials with all exponents `< b` have distinct SoS exponents. -/
+theorem sosExpo_injOn {b : ℕ} {w : σ → ℕ} (hw : Function.Injective w) {m m' : σ →₀ ℕ}
+    (hm : ∀ k, m k < b) (hm' : ∀ k, m' k < b) (h : sosExpo b w m = sosExpo b w m') :
+    m = m' := by
   classical
   ext k
-  have e : ∀ m : σ →₀ ℕ, (∀ k, m k ≤ 1) → m k = if k ∈ m.support then 1 else 0 := by
-    intro m hm
-    split_ifs with hk
-    · have := hm k; have := Finsupp.mem_support_iff.1 hk; omega
-    · exact Finsupp.notMem_support_iff.1 hk
-  rw [e m hm, e m' hm', hs]
+  have hb : 0 < b := lt_of_le_of_lt (Nat.zero_le _) (hm k)
+  set s := m.support ∪ m'.support ∪ {k}
+  have hks : k ∈ s := by simp [s]
+  have e1 := sosExpo_eq_sum_of_subset b w (s := s) (m := m) (by
+    intro i hi; simp [s, Finsupp.mem_support_iff.1 hi])
+  have e2 := sosExpo_eq_sum_of_subset b w (s := s) (m := m') (by
+    intro i hi; simp [s, Finsupp.mem_support_iff.1 hi])
+  have := digit_extract hb (hw.injOn (s := ↑s)) (fun i _ => hm i) hks
+  have := digit_extract hb (hw.injOn (s := ↑s)) (fun i _ => hm' i) hks
+  rw [← e1] at *; rw [← e2] at *
+  rw [h] at *
+  omega
 
-/-- **Key lemma.** A nonzero polynomial of degree `≤ 1` in each variable stays nonzero under
-the SoS substitution `X k ↦ ε^(2^(w k))`, for injective `w`: distinct squarefree monomials go to
-distinct powers of `ε` (binary expansion), so no cancellation can occur. -/
-theorem sosSubst_ne_zero {w : σ → ℕ} (hw : Function.Injective w) {D : MvPolynomial σ R}
-    (hD : D ≠ 0) (hsq : ∀ m ∈ D.support, ∀ k, m k ≤ 1) : sosSubst w D ≠ 0 := by
+/-- **Key lemma.** A nonzero polynomial of degree `< b` in each variable stays nonzero under
+the SoS substitution `X k ↦ ε^(b^(w k))`, for injective `w`: distinct monomials go to distinct
+powers of `ε` (base-`b` expansion), so no cancellation can occur. -/
+theorem sosSubst_ne_zero {b : ℕ} {w : σ → ℕ} (hw : Function.Injective w)
+    {D : MvPolynomial σ R} (hD : D ≠ 0) (hdeg : ∀ m ∈ D.support, ∀ k, m k < b) :
+    sosSubst b w D ≠ 0 := by
   obtain ⟨m₀, hm₀⟩ := MvPolynomial.ne_zero_iff.1 hD
   have hmem : m₀ ∈ D.support := MvPolynomial.mem_support_iff.2 hm₀
   intro h
-  have := congrArg (fun p => (toHahn p).coeff ((sosExpo w m₀ : ℕ) : ℤ)) h
+  have := congrArg (fun p => (toHahn p).coeff ((sosExpo b w m₀ : ℕ) : ℤ)) h
   simp only [toHahn_sosSubst, HahnSeries.coeff_sum, HahnSeries.coeff_single, map_zero,
     HahnSeries.coeff_zero] at this
-  rw [Finset.sum_eq_single m₀ (fun m hm hne => ?_) (fun h => absurd hmem h), ite_eq_left rfl] at this
+  rw [Finset.sum_eq_single m₀ (fun m hm hne => ?_) (fun h => absurd hmem h), ite_eq_left rfl]
+    at this
   · exact hm₀ this
   · rw [ite_eq_right]
     intro he
-    exact hne (sosExpo_injOn hw (hsq m hm) (hsq m₀ hmem) (Nat.cast_injective he).symm)
+    exact hne (sosExpo_injOn hw (hdeg m hm) (hdeg m₀ hmem) (Nat.cast_injective he).symm)
 
 end Key
 
@@ -188,17 +269,17 @@ theorem sosIdx_injective : Function.Injective (sosIdx : Fin n × Fin d → ℕ) 
   finProdFinEquiv.injective (Fin.ext h)
 
 /-- **SoS perturbed point**: coordinate `j` of input point `i` becomes
-`x i j + ε^(2^(j + d i))`. Computable. All perturbation exponents are distinct powers of two. -/
-def sosPoint (x : Fin n → Fin d → R) (i : Fin n) : Fin d → Poly ℤ R :=
-  fun j => Poly.C (x i j) + single ((2 ^ sosIdx (i, j) : ℕ) : ℤ) 1
+`x i j + ε^(b^(j + d i))`. Computable. All perturbation exponents are distinct powers of two. -/
+def sosPoint (b : ℕ) (x : Fin n → Fin d → R) (i : Fin n) : Fin d → Poly ℤ R :=
+  fun j => Poly.C (x i j) + single ((b ^ sosIdx (i, j) : ℕ) : ℤ) 1
 
 /-- The symbolic version of `sosPoint`: the perturbation is the variable `X (i, j)`. -/
 noncomputable def mvPoint (x : Fin n → Fin d → R) (i : Fin n) :
     Fin d → MvPolynomial (Fin n × Fin d) R :=
   fun j => MvPolynomial.C (x i j) + X (i, j)
 
-theorem sosSubst_mvPoint (x : Fin n → Fin d → R) (i : Fin n) :
-    (sosSubst sosIdx : MvPolynomial (Fin n × Fin d) R →ₐ[R] _) ∘ mvPoint x i = sosPoint x i := by
+theorem sosSubst_mvPoint (b : ℕ) (x : Fin n → Fin d → R) (i : Fin n) :
+    (sosSubst b sosIdx : MvPolynomial (Fin n × Fin d) R →ₐ[R] _) ∘ mvPoint x i = sosPoint b x i := by
   funext j
   simp [mvPoint, sosPoint, sosSubst, Poly.algebraMap_apply]
 
@@ -222,15 +303,15 @@ section Orient2d
 variable {n : ℕ}
 
 /-- SoS-perturbed `orient2d` of input points `i, k, l`. Computable. -/
-def orient2dSoS (x : Fin n → Fin 2 → R) (i k l : Fin n) : Poly ℤ R :=
-  orient2d (sosPoint x i) (sosPoint x k) (sosPoint x l)
+def orient2dSoS (b : ℕ) (x : Fin n → Fin 2 → R) (i k l : Fin n) : Poly ℤ R :=
+  orient2d (sosPoint b x i) (sosPoint b x k) (sosPoint b x l)
 
 /-- **SoS nonvanishing.** For any input coordinates, even degenerate (collinear or coincident
 points), the perturbed `orient2d` is nonzero as soon as the three point indices are distinct. -/
-theorem orient2dSoS_ne_zero [Nontrivial R] (x : Fin n → Fin 2 → R) {i k l : Fin n}
-    (hik : i ≠ k) (hil : i ≠ l) (hkl : k ≠ l) : orient2dSoS x i k l ≠ 0 := by
+theorem orient2dSoS_ne_zero [Nontrivial R] {b : ℕ} (hb : 2 ≤ b) (x : Fin n → Fin 2 → R) {i k l : Fin n}
+    (hik : i ≠ k) (hil : i ≠ l) (hkl : k ≠ l) : orient2dSoS b x i k l ≠ 0 := by
   set D := orient2d (mvPoint x i) (mvPoint x k) (mvPoint x l) with hD
-  have hsub : sosSubst sosIdx D = orient2dSoS x i k l := by
+  have hsub : sosSubst b sosIdx D = orient2dSoS b x i k l := by
     rw [hD, map_orient2d, sosSubst_mvPoint, sosSubst_mvPoint, sosSubst_mvPoint]; rfl
   rw [← hsub]
   refine sosSubst_ne_zero sosIdx_injective ?_ ?_
@@ -244,7 +325,7 @@ theorem orient2dSoS_ne_zero [Nontrivial R] (x : Fin n → Fin 2 → R) {i k l : 
   · have h := ((degLe_mvPoint_sub x i l 0).mul (degLe_mvPoint_sub x k l 1) (by decide)).sub
       (((degLe_mvPoint_sub x i l 1).mul (degLe_mvPoint_sub x k l 0) (by decide)).mono
         (by decide))
-    exact DegLe.le_one h
+    exact fun m hm k => by have := DegLe.le_one h m hm k; omega
 
 end Orient2d
 
@@ -254,16 +335,16 @@ section Orient3d
 variable {n : ℕ}
 
 /-- SoS-perturbed `orient3d` of input points `i, k, l, m`. Computable. -/
-def orient3dSoS (x : Fin n → Fin 3 → R) (i k l m : Fin n) : Poly ℤ R :=
-  orient3d (sosPoint x i) (sosPoint x k) (sosPoint x l) (sosPoint x m)
+def orient3dSoS (b : ℕ) (x : Fin n → Fin 3 → R) (i k l m : Fin n) : Poly ℤ R :=
+  orient3d (sosPoint b x i) (sosPoint b x k) (sosPoint b x l) (sosPoint b x m)
 
 /-- **SoS nonvanishing for `orient3d`**: nonzero for any input as soon as the four point indices
 are pairwise distinct. -/
-theorem orient3dSoS_ne_zero [Nontrivial R] (x : Fin n → Fin 3 → R) {i k l m : Fin n}
+theorem orient3dSoS_ne_zero [Nontrivial R] {b : ℕ} (hb : 2 ≤ b) (x : Fin n → Fin 3 → R) {i k l m : Fin n}
     (hik : i ≠ k) (hil : i ≠ l) (him : i ≠ m) (hkl : k ≠ l) (hkm : k ≠ m) (hlm : l ≠ m) :
-    orient3dSoS x i k l m ≠ 0 := by
+    orient3dSoS b x i k l m ≠ 0 := by
   set D := orient3d (mvPoint x i) (mvPoint x k) (mvPoint x l) (mvPoint x m) with hD
-  have hsub : sosSubst sosIdx D = orient3dSoS x i k l m := by
+  have hsub : sosSubst b sosIdx D = orient3dSoS b x i k l m := by
     rw [hD, map_orient3d, sosSubst_mvPoint, sosSubst_mvPoint, sosSubst_mvPoint,
       sosSubst_mvPoint]; rfl
   rw [← hsub]
@@ -281,7 +362,7 @@ theorem orient3dSoS_ne_zero [Nontrivial R] (x : Fin n → Fin 3 → R) {i k l m 
       (degLe_mvPoint_sub x i m 0) (degLe_mvPoint_sub x i m 1) (degLe_mvPoint_sub x i m 2)
       (degLe_mvPoint_sub x k m 0) (degLe_mvPoint_sub x k m 1) (degLe_mvPoint_sub x k m 2)
       (degLe_mvPoint_sub x l m 0) (degLe_mvPoint_sub x l m 1) (degLe_mvPoint_sub x l m 2)
-    exact DegLe.le_one h
+    exact fun m hm k => by have := DegLe.le_one h m hm k; omega
 
 end Orient3d
 
@@ -307,30 +388,31 @@ theorem signOf_int (r : ℤ) : signOf r = r.sign := by
   · simp
   · simp [h, Int.sign_eq_one_of_pos h]
 
-theorem isFinite_sosPoint (x : Fin n → Fin d → R) (i : Fin n) (j : Fin d) :
-    (sosPoint x i j).IsFinite := by
+theorem isFinite_sosPoint (b : ℕ) (x : Fin n → Fin d → R) (i : Fin n) (j : Fin d) :
+    (sosPoint b x i j).IsFinite := by
   refine (isFinite_C _).add ?_
   unfold IsFinite
   by_cases h : (1 : R) = 0
   · simp [single, h]
   · rw [leadExp_single h]; exact WithTop.coe_le_coe.2 (by positivity)
 
-theorem std_sosPoint (x : Fin n → Fin d → R) (i : Fin n) (j : Fin d) :
-    (sosPoint x i j).std = x i j := by
+theorem std_sosPoint {b : ℕ} (hb : 0 < b) (x : Fin n → Fin d → R) (i : Fin n) (j : Fin d) :
+    (sosPoint b x i j).std = x i j := by
   simp only [sosPoint, std]
   simp only [Poly.coeff_add, Poly.coeff_C, Poly.coeff_single, ite_true]
-  rw [ite_eq_right (by positivity : (0 : ℤ) < _).ne, add_zero]
+  rw [ite_eq_right (Nat.cast_pos.2 (pow_pos hb _) : (0 : ℤ) < _).ne, add_zero]
 
 /-- The perturbed point as a point of the finite subring. -/
-def sosPointFin (x : Fin n → Fin d → R) (i : Fin n) : Fin d → (finiteSubring : Subring (Poly ℤ R)) :=
-  fun j => ⟨sosPoint x i j, isFinite_sosPoint x i j⟩
+def sosPointFin (b : ℕ) (x : Fin n → Fin d → R) (i : Fin n) :
+    Fin d → (finiteSubring : Subring (Poly ℤ R)) :=
+  fun j => ⟨sosPoint b x i j, isFinite_sosPoint b x i j⟩
 
-theorem stdPart_sosPointFin (x : Fin n → Fin d → R) (i : Fin n) :
-    stdPart ∘ sosPointFin x i = x i := by
-  funext j; exact std_sosPoint x i j
+theorem stdPart_sosPointFin {b : ℕ} (hb : 0 < b) (x : Fin n → Fin d → R) (i : Fin n) :
+    stdPart ∘ sosPointFin b x i = x i := by
+  funext j; exact std_sosPoint hb x i j
 
-theorem subtype_sosPointFin (x : Fin n → Fin d → R) (i : Fin n) :
-    (finiteSubring : Subring (Poly ℤ R)).subtype ∘ sosPointFin x i = sosPoint x i := rfl
+theorem subtype_sosPointFin (b : ℕ) (x : Fin n → Fin d → R) (i : Fin n) :
+    (finiteSubring : Subring (Poly ℤ R)).subtype ∘ sosPointFin b x i = sosPoint b x i := rfl
 
 /-- A finite element with nonzero standard part has that standard part as leading coefficient. -/
 theorem sign_of_isFinite_of_std_ne_zero [LinearOrder R] {p : Poly ℤ R} (hp : p.IsFinite)
@@ -341,53 +423,53 @@ theorem sign_of_isFinite_of_std_ne_zero [LinearOrder R] {p : Poly ℤ R} (hp : p
     exact h (coeff_eq_zero_of_lt_leadExp (lt_of_not_ge hlt))
   rw [sign_eq_signOf_leadCoeff, std, coeff_leadExp hle]
 
-theorem orient2dSoS_isFinite (x : Fin n → Fin 2 → R) (i k l : Fin n) :
-    (orient2dSoS x i k l).IsFinite := by
-  have := (orient2d (sosPointFin x i) (sosPointFin x k) (sosPointFin x l)).2
+theorem orient2dSoS_isFinite (b : ℕ) (x : Fin n → Fin 2 → R) (i k l : Fin n) :
+    (orient2dSoS b x i k l).IsFinite := by
+  have := (orient2d (sosPointFin b x i) (sosPointFin b x k) (sosPointFin b x l)).2
   rwa [← Subring.coe_subtype, map_orient2d, subtype_sosPointFin, subtype_sosPointFin,
     subtype_sosPointFin] at this
 
 /-- The standard part of the perturbed `orient2d` is the unperturbed `orient2d`. -/
-theorem orient2dSoS_std (x : Fin n → Fin 2 → R) (i k l : Fin n) :
-    (orient2dSoS x i k l).std = orient2d (x i) (x k) (x l) := by
-  have h := map_orient2d stdPart (sosPointFin x i) (sosPointFin x k) (sosPointFin x l)
-  rw [stdPart_sosPointFin, stdPart_sosPointFin, stdPart_sosPointFin, stdPart_apply] at h
+theorem orient2dSoS_std {b : ℕ} (hb : 0 < b) (x : Fin n → Fin 2 → R) (i k l : Fin n) :
+    (orient2dSoS b x i k l).std = orient2d (x i) (x k) (x l) := by
+  have h := map_orient2d stdPart (sosPointFin b x i) (sosPointFin b x k) (sosPointFin b x l)
+  rw [stdPart_sosPointFin hb, stdPart_sosPointFin hb, stdPart_sosPointFin hb, stdPart_apply] at h
   rw [← h]
   have := map_orient2d (finiteSubring : Subring (Poly ℤ R)).subtype
-    (sosPointFin x i) (sosPointFin x k) (sosPointFin x l)
+    (sosPointFin b x i) (sosPointFin b x k) (sosPointFin b x l)
   rw [subtype_sosPointFin, subtype_sosPointFin, subtype_sosPointFin] at this
   rw [orient2dSoS, ← this]; rfl
 
 /-- **SoS agrees with the exact predicate on nondegenerate input.** -/
-theorem orient2dSoS_sign [LinearOrder R] (x : Fin n → Fin 2 → R) (i k l : Fin n)
+theorem orient2dSoS_sign [LinearOrder R] {b : ℕ} (hb : 0 < b) (x : Fin n → Fin 2 → R) (i k l : Fin n)
     (h : orient2d (x i) (x k) (x l) ≠ 0) :
-    (orient2dSoS x i k l).sign = signOf (orient2d (x i) (x k) (x l)) := by
-  rw [← orient2dSoS_std] at h ⊢
-  exact sign_of_isFinite_of_std_ne_zero (orient2dSoS_isFinite x i k l) h
+    (orient2dSoS b x i k l).sign = signOf (orient2d (x i) (x k) (x l)) := by
+  rw [← orient2dSoS_std hb] at h ⊢
+  exact sign_of_isFinite_of_std_ne_zero (orient2dSoS_isFinite b x i k l) h
 
-theorem orient3dSoS_isFinite (x : Fin n → Fin 3 → R) (i k l m : Fin n) :
-    (orient3dSoS x i k l m).IsFinite := by
-  have := (orient3d (sosPointFin x i) (sosPointFin x k) (sosPointFin x l) (sosPointFin x m)).2
+theorem orient3dSoS_isFinite (b : ℕ) (x : Fin n → Fin 3 → R) (i k l m : Fin n) :
+    (orient3dSoS b x i k l m).IsFinite := by
+  have := (orient3d (sosPointFin b x i) (sosPointFin b x k) (sosPointFin b x l) (sosPointFin b x m)).2
   rwa [← Subring.coe_subtype, map_orient3d, subtype_sosPointFin, subtype_sosPointFin,
     subtype_sosPointFin, subtype_sosPointFin] at this
 
-theorem orient3dSoS_std (x : Fin n → Fin 3 → R) (i k l m : Fin n) :
-    (orient3dSoS x i k l m).std = orient3d (x i) (x k) (x l) (x m) := by
-  have h := map_orient3d stdPart (sosPointFin x i) (sosPointFin x k) (sosPointFin x l)
-    (sosPointFin x m)
-  rw [stdPart_sosPointFin, stdPart_sosPointFin, stdPart_sosPointFin, stdPart_sosPointFin,
+theorem orient3dSoS_std {b : ℕ} (hb : 0 < b) (x : Fin n → Fin 3 → R) (i k l m : Fin n) :
+    (orient3dSoS b x i k l m).std = orient3d (x i) (x k) (x l) (x m) := by
+  have h := map_orient3d stdPart (sosPointFin b x i) (sosPointFin b x k) (sosPointFin b x l)
+    (sosPointFin b x m)
+  rw [stdPart_sosPointFin hb, stdPart_sosPointFin hb, stdPart_sosPointFin hb, stdPart_sosPointFin hb,
     stdPart_apply] at h
   rw [← h]
   have := map_orient3d (finiteSubring : Subring (Poly ℤ R)).subtype
-    (sosPointFin x i) (sosPointFin x k) (sosPointFin x l) (sosPointFin x m)
+    (sosPointFin b x i) (sosPointFin b x k) (sosPointFin b x l) (sosPointFin b x m)
   rw [subtype_sosPointFin, subtype_sosPointFin, subtype_sosPointFin, subtype_sosPointFin] at this
   rw [orient3dSoS, ← this]; rfl
 
-theorem orient3dSoS_sign [LinearOrder R] (x : Fin n → Fin 3 → R) (i k l m : Fin n)
+theorem orient3dSoS_sign [LinearOrder R] {b : ℕ} (hb : 0 < b) (x : Fin n → Fin 3 → R) (i k l m : Fin n)
     (h : orient3d (x i) (x k) (x l) (x m) ≠ 0) :
-    (orient3dSoS x i k l m).sign = signOf (orient3d (x i) (x k) (x l) (x m)) := by
-  rw [← orient3dSoS_std] at h ⊢
-  exact sign_of_isFinite_of_std_ne_zero (orient3dSoS_isFinite x i k l m) h
+    (orient3dSoS b x i k l m).sign = signOf (orient3d (x i) (x k) (x l) (x m)) := by
+  rw [← orient3dSoS_std hb] at h ⊢
+  exact sign_of_isFinite_of_std_ne_zero (orient3dSoS_isFinite b x i k l m) h
 
 end StdPart
 
@@ -396,14 +478,14 @@ end StdPart
 section Swap
 variable {n : ℕ}
 
-theorem orient2dSoS_swap₁₂ (x : Fin n → Fin 2 → R) (i k l : Fin n) :
-    orient2dSoS x k i l = -orient2dSoS x i k l := orient2d_swap₁₂ _ _ _
+theorem orient2dSoS_swap₁₂ (b : ℕ) (x : Fin n → Fin 2 → R) (i k l : Fin n) :
+    orient2dSoS b x k i l = -orient2dSoS b x i k l := orient2d_swap₁₂ _ _ _
 
-theorem orient2dSoS_swap₂₃ (x : Fin n → Fin 2 → R) (i k l : Fin n) :
-    orient2dSoS x i l k = -orient2dSoS x i k l := orient2d_swap₂₃ _ _ _
+theorem orient2dSoS_swap₂₃ (b : ℕ) (x : Fin n → Fin 2 → R) (i k l : Fin n) :
+    orient2dSoS b x i l k = -orient2dSoS b x i k l := orient2d_swap₂₃ _ _ _
 
-theorem orient3dSoS_swap₁₂ (x : Fin n → Fin 3 → R) (i k l m : Fin n) :
-    orient3dSoS x k i l m = -orient3dSoS x i k l m := orient3d_swap₁₂ _ _ _ _
+theorem orient3dSoS_swap₁₂ (b : ℕ) (x : Fin n → Fin 3 → R) (i k l m : Fin n) :
+    orient3dSoS b x k i l m = -orient3dSoS b x i k l m := orient3d_swap₁₂ _ _ _ _
 
 theorem sign_neg [LinearOrder R] [IsStrictOrderedRing R] (p : Poly ℤ R) :
     (-p).sign = -p.sign := by
@@ -418,21 +500,21 @@ theorem sign_neg [LinearOrder R] [IsStrictOrderedRing R] (p : Poly ℤ R) :
 
 /-- Swapping two input points flips the SoS sign. -/
 theorem orient2dSoS_sign_swap₁₂ [LinearOrder R] [IsStrictOrderedRing R]
-    (x : Fin n → Fin 2 → R) (i k l : Fin n) :
-    (orient2dSoS x k i l).sign = -(orient2dSoS x i k l).sign := by
+    (b : ℕ) (x : Fin n → Fin 2 → R) (i k l : Fin n) :
+    (orient2dSoS b x k i l).sign = -(orient2dSoS b x i k l).sign := by
   rw [orient2dSoS_swap₁₂, sign_neg]
 
 /-- The SoS sign is never `0` for distinct indices. -/
-theorem orient2dSoS_sign_ne_zero [LinearOrder R] [IsStrictOrderedRing R]
+theorem orient2dSoS_sign_ne_zero [LinearOrder R] [IsStrictOrderedRing R] {b : ℕ} (hb : 2 ≤ b)
     (x : Fin n → Fin 2 → R) {i k l : Fin n} (hik : i ≠ k) (hil : i ≠ l) (hkl : k ≠ l) :
-    (orient2dSoS x i k l).sign ≠ 0 := fun h =>
-  orient2dSoS_ne_zero x hik hil hkl ((sign_eq_zero_iff _).1 h)
+    (orient2dSoS b x i k l).sign ≠ 0 := fun h =>
+  orient2dSoS_ne_zero hb x hik hil hkl ((sign_eq_zero_iff _).1 h)
 
-theorem orient3dSoS_sign_ne_zero [LinearOrder R] [IsStrictOrderedRing R]
+theorem orient3dSoS_sign_ne_zero [LinearOrder R] [IsStrictOrderedRing R] {b : ℕ} (hb : 2 ≤ b)
     (x : Fin n → Fin 3 → R) {i k l m : Fin n} (hik : i ≠ k) (hil : i ≠ l) (him : i ≠ m)
     (hkl : k ≠ l) (hkm : k ≠ m) (hlm : l ≠ m) :
-    (orient3dSoS x i k l m).sign ≠ 0 := fun h =>
-  orient3dSoS_ne_zero x hik hil him hkl hkm hlm ((sign_eq_zero_iff _).1 h)
+    (orient3dSoS b x i k l m).sign ≠ 0 := fun h =>
+  orient3dSoS_ne_zero hb x hik hil him hkl hkm hlm ((sign_eq_zero_iff _).1 h)
 
 end Swap
 

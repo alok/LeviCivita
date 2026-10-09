@@ -395,36 +395,36 @@ open Geometry
 variable {R : Type*} [CommRing R] [DecidableEq R] {n : ℕ}
 
 /-- The SoS-perturbed `orient2d` as an expression tree (the generic formula at `K = Expr`). -/
-def orient2dExpr (x : Fin n → Fin 2 → R) (i k l : Fin n) : Expr ℤ R :=
-  orient2d (fun j => leaf (sosPoint x i j)) (fun j => leaf (sosPoint x k j))
-    (fun j => leaf (sosPoint x l j))
+def orient2dExpr (b : ℕ) (x : Fin n → Fin 2 → R) (i k l : Fin n) : Expr ℤ R :=
+  orient2d (fun j => leaf (sosPoint b x i j)) (fun j => leaf (sosPoint b x k j))
+    (fun j => leaf (sosPoint b x l j))
 
-theorem eval_orient2dExpr (x : Fin n → Fin 2 → R) (i k l : Fin n) :
-    (orient2dExpr x i k l).eval = orient2dSoS x i k l := by
+theorem eval_orient2dExpr (b : ℕ) (x : Fin n → Fin 2 → R) (i k l : Fin n) :
+    (orient2dExpr b x i k l).eval = orient2dSoS b x i k l := by
   simp [orient2dExpr, orient2d, orient2dSoS]
 
-theorem leavesFinite_orient2dExpr (x : Fin n → Fin 2 → R) (i k l : Fin n) :
-    (orient2dExpr x i k l).LeavesFinite := by
+theorem leavesFinite_orient2dExpr (b : ℕ) (x : Fin n → Fin 2 → R) (i k l : Fin n) :
+    (orient2dExpr b x i k l).LeavesFinite := by
   simp [orient2dExpr, orient2d, isFinite_sosPoint]
 
 /-- Lazy SoS `orient2d`: exact sign of the perturbed predicate, computing perturbation terms only
 when the unperturbed value vanishes. -/
-def orient2dLazy [LinearOrder R] (x : Fin n → Fin 2 → R) (i k l : Fin n) (fuel : ℕ := 64) :
+def orient2dLazy [LinearOrder R] (b : ℕ) (x : Fin n → Fin 2 → R) (i k l : Fin n) (fuel : ℕ := 64) :
     Option ℤ :=
-  lazySignIter (orient2dExpr x i k l) fuel 1
+  lazySignIter (orient2dExpr b x i k l) fuel 1
 
-theorem orient2dLazy_sound [LinearOrder R] {x : Fin n → Fin 2 → R} {i k l : Fin n} {fuel : ℕ}
-    {s : ℤ} (h : orient2dLazy x i k l fuel = some s) : (orient2dSoS x i k l).sign = s := by
+theorem orient2dLazy_sound [LinearOrder R] {b : ℕ} {x : Fin n → Fin 2 → R} {i k l : Fin n} {fuel : ℕ}
+    {s : ℤ} (h : orient2dLazy b x i k l fuel = some s) : (orient2dSoS b x i k l).sign = s := by
   rw [← eval_orient2dExpr]
-  exact lazySignIter_sound (leavesFinite_orient2dExpr x i k l) h
+  exact lazySignIter_sound (leavesFinite_orient2dExpr b x i k l) h
 
 /-- With enough fuel the lazy evaluator returns the SoS sign, which is never `0`. -/
-theorem orient2dLazy_complete [LinearOrder R] [Nontrivial R] (x : Fin n → Fin 2 → R)
+theorem orient2dLazy_complete [LinearOrder R] [Nontrivial R] {b : ℕ} (hb : 2 ≤ b) (x : Fin n → Fin 2 → R)
     {i k l : Fin n} (hik : i ≠ k) (hil : i ≠ l) (hkl : k ≠ l) {fuel : ℕ}
-    (hc : ∀ t ∈ (orient2dSoS x i k l).terms, t.1 < 2 ^ fuel) :
-    orient2dLazy x i k l (fuel + 1) = some (orient2dSoS x i k l).sign := by
-  have := lazySignIter_complete (leavesFinite_orient2dExpr x i k l)
-    (by rw [eval_orient2dExpr]; exact orient2dSoS_ne_zero x hik hil hkl)
+    (hc : ∀ t ∈ (orient2dSoS b x i k l).terms, t.1 < 2 ^ fuel) :
+    orient2dLazy b x i k l (fuel + 1) = some (orient2dSoS b x i k l).sign := by
+  have := lazySignIter_complete (leavesFinite_orient2dExpr b x i k l)
+    (by rw [eval_orient2dExpr]; exact orient2dSoS_ne_zero hb x hik hil hkl)
     (fuel := fuel) (c := 1) (by rw [eval_orient2dExpr]; simpa using hc)
   rwa [eval_orient2dExpr] at this
 

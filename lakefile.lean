@@ -2,19 +2,15 @@ import Lake
 open Lake DSL
 
 package LeviCivita where
-  version := v!"0.1.0"
+  version := v!"0.2.0"
   leanOptions := #[
-    ⟨`autoImplicit, true⟩,
+    ⟨`autoImplicit, false⟩,
     ⟨`relaxedAutoImplicit, false⟩
   ]
 
+require mathlib from git
+  "https://github.com/leanprover-community/mathlib4.git" @ "master"
+
 @[default_target]
 lean_lib LeviCivita where
-  globs := #[.submodules `LeviCivita]
-
--- Benchmark executables
-lean_exe lcbench where
-  root := `LeviCivita.Bench
-
-lean_exe nativebench where
-  root := `LeviCivita.NativeBench
+  roots := #[`LeviCivita, `LeviCivita.Test, `LeviCivita.AxiomAudit]

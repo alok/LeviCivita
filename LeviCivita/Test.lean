@@ -1,101 +1,123 @@
-import LeviCivita.Field
+/-
+Copyright (c) 2026 Alok Singh. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+-/
+import LeviCivita.Poly
 
 /-!
-# Levi-Civita Field Tests
+# Tests for `Poly`
 
-Tests and examples for the Levi-Civita field implementation.
+`#eval` examples (compiled code) and kernel-checked `decide` examples (no `native_decide`, no
+`Lean.ofReduceBool`). Every `decide` example is a named theorem so `AxiomAudit` can check it.
+
+Core's `Rat.add`/`Rat.mul`/`Rat.sub`/`Rat.inv` are `@[irreducible]`, so the elaborator's `whnf`
+cannot evaluate even `(1 : ℚ) + 1 = 2` with plain `decide`. Two workarounds, both used below:
+* `decide +kernel` skips the elaborator and lets the kernel (which ignores reducibility hints)
+  evaluate the `Decidable` instance;
+* plain `decide` after locally marking those four `Rat` operations `semireducible`. That
+  attribute only affects elaboration-time unfolding, not what the kernel accepts.
 -/
-
-open LeviCivita.Field
 
 namespace LeviCivita.Test
 
-/-! ## Basic Arithmetic Tests -/
+open LeviCivita.Poly
 
--- Create some numbers
-#eval toString (ε : LC)  -- should print "ε"
-#eval toString (H : LC)  -- should print "H"
-#eval toString ((1 : LC) + ε)  -- should print "1 + ε"
-#eval toString ((2 : LC) * ε)  -- should print "2ε"
+abbrev P := LeviCivita.Poly ℤ ℚ
 
--- Arithmetic
-#eval toString (ε * H)  -- should be 1
-#eval toString (ε * ε)  -- should be ε²
-#eval toString (H * H)  -- should be H²
+/-! ### `#eval` -/
 
--- Signum tests
-#eval LC.signum ε  -- 1 (positive infinitesimal)
-#eval LC.signum (-ε)  -- -1
-#eval LC.signum ((1 : LC) - ε)  -- 1 (1 is dominant)
-#eval LC.signum (ε - (1 : LC))  -- -1
+/-- info: 1 ε^0 + -1 ε^2 -/
+#guard_msgs in #eval ((1 : P) + ε) * (1 - ε)
 
-/-! ## Inversion Tests -/
+/-- info: 1 ε^0 -/
+#guard_msgs in #eval (ε : P) * H
 
--- Pure inversions
-#eval toString (LC.invert (2 : LC))  -- 0.5
-#eval toString (LC.invert H)  -- ε
-#eval toString (LC.invert ε)  -- H
+/-- info: 1 ε^-3 + 3 ε^-1 + 3 ε^1 + 1 ε^3 -/
+#guard_msgs in #eval ((H : P) + ε) ^ 3
 
--- Non-pure inversion using series expansion
--- 1/(1+ε) ≈ 1 - ε + ε² - ε³ + ...
-#eval toString (LC.invert ((1 : LC) + ε) 5)
+/-- info: 1000000000 ε^0 -/
+#guard_msgs in #eval (10 : P) ^ 9
 
-/-! ## Derivative Tests -/
+/-- info: true -/
+#guard_msgs in #eval decide ((ε : P) < C (1 / 1000))
 
--- f(x) = x², f'(x) = 2x
--- At x = 3: f'(3) = 6
-def square (x : LC) : LC := x * x
-#eval LC.derivative square (3 : LC)  -- should be 6
+/-- info: 1 -/
+#guard_msgs in #eval (C (1 / 1000) - ε : P).sign
 
--- f(x) = x³, f'(x) = 3x²
--- At x = 2: f'(2) = 12
-def cube (x : LC) : LC := x * x * x
-#eval LC.derivative cube (2 : LC)  -- should be 12
+/-- info: -1 -/
+#guard_msgs in #eval (ε - H : P).sign
 
--- Higher derivatives
--- f(x) = x³, f''(x) = 6x
--- At x = 2: f''(2) = 12
-#eval LC.nthDerivative cube (2 : LC) 2  -- should be 12
+/-- info: 0 -/
+#guard_msgs in #eval ((1 + ε) * (1 - ε) - (1 - ε ^ 2) : P).sign
 
-/-! ## Polynomial Evaluation -/
+/-- info: 1 ε^-1 -/
+#guard_msgs in #eval max (H : P) 1000000
 
--- p(x) = 2x² + 3x + 1
--- p'(x) = 4x + 3
--- At x = 1: p'(1) = 7
-def poly (x : LC) : LC := (2 : LC) * x * x + (3 : LC) * x + (1 : LC)
-#eval LC.derivative poly (1 : LC)  -- should be 7
+/-- info: (7 : Rat)/2 ε^0 + (1 : Rat)/2 ε^1 -/
+#guard_msgs in #eval ((1/2 : ℚ) • ((7 : P) + ε))
 
-/-! ## Comparison Tests -/
+/-! ### Kernel-checked `decide +kernel` -/
 
-#eval ε < (1 : LC)  -- true (infinitesimal < finite)
-#eval (1 : LC) < H  -- true (finite < infinite)
-#eval ε < ε * ε  -- false (ε > ε²)
-#eval ε * ε < ε  -- true (ε² < ε)
+theorem eps_lt_one_thousandth : (ε : P) < C (1 / 1000) := by decide +kernel
 
-/-! ## Transcendental Function Tests -/
+theorem eps_pos : (0 : P) < ε := by decide +kernel
 
--- exp(ε) = 1 + ε + ε²/2! + ε³/3! + ...
-#eval toString (LC.exp ε 5)
+theorem eps_sq_lt_eps : (ε : P) ^ 2 < ε := by decide +kernel
 
--- sin(ε) ≈ ε - ε³/6 + ...
-#eval toString (LC.sin ε 3)
+theorem ten_pow_nine_lt_H : (10 : P) ^ 9 < H := by decide +kernel
 
--- cos(ε) ≈ 1 - ε²/2 + ...
-#eval toString (LC.cos ε 3)
+theorem eps_mul_H : (ε : P) * H = 1 := by decide +kernel
 
--- Verify sin²(ε) + cos²(ε) ≈ 1
--- (This won't be exact due to truncation, but should be close)
-private def sincos_identity : LC :=
-  let s := LC.sin ε 5
-  let c := LC.cos ε 5
-  s * s + c * c
-#eval toString sincos_identity
+theorem one_add_eps_mul_one_sub_eps : ((1 : P) + ε) * (1 - ε) = 1 - ε ^ 2 := by decide +kernel
 
--- Derivative of exp at 0 should be exp(0) = 1
--- d/dx exp(x) = exp(x), so at x=0, derivative = 1
-#eval LC.derivative (fun x => LC.exp x 8) (0 : LC)
+theorem H_sq_gt : (1000000 : P) * H < H ^ 2 := by decide +kernel
 
--- Derivative of sin at 0 should be cos(0) = 1
-#eval LC.derivative (fun x => LC.sin x 8) (0 : LC)
+theorem neg_eps_lt_zero : -(ε : P) < 0 := by decide +kernel
+
+theorem eps_le_eps : (ε : P) ≤ ε := by decide +kernel
+
+theorem not_H_le_eps : ¬ (H : P) ≤ ε := by decide +kernel
+
+/-! ### Plain `decide` -/
+
+section PlainDecide
+
+attribute [local semireducible] Rat.add Rat.mul Rat.sub Rat.inv
+
+theorem eps_lt_one_thousandth' : (ε : P) < C (1 / 1000) := by decide
+
+theorem eps_pos' : (0 : P) < ε := by decide
+
+theorem eps_sq_lt_eps' : (ε : P) ^ 2 < ε := by decide
+
+theorem ten_pow_nine_lt_H' : (10 : P) ^ 9 < H := by decide
+
+theorem eps_mul_H' : (ε : P) * H = 1 := by decide
+
+theorem one_add_eps_mul_one_sub_eps' : ((1 : P) + ε) * (1 - ε) = 1 - ε ^ 2 := by decide
+
+end PlainDecide
+
+/-! ### `Poly ℤ ℤ`: plain `decide` with no attribute changes -/
+
+theorem int_eps_mul_H : (ε : Poly ℤ ℤ) * H = 1 := by decide
+
+theorem int_ten_pow_nine_lt_H : (10 : Poly ℤ ℤ) ^ 9 < H := by decide
+
+theorem int_eps_pos : (0 : Poly ℤ ℤ) < ε := by decide
+
+/-! ### Rational exponents (`Γ = ℚ`): `√ε` -/
+
+theorem sqrt_eps_sq : (single (1 / 2) 1 : Poly ℚ ℚ) ^ 2 = ε := by decide +kernel
+
+theorem eps_lt_sqrt_eps : (ε : Poly ℚ ℚ) < single (1 / 2) 1 := by decide +kernel
+
+/-! ### Consequences via the transported structure (no computation) -/
+
+/-- An ordered-ring fact derived from the transported `IsStrictOrderedRing` instance. -/
+theorem eps_sq_pos : (0 : P) < ε ^ 2 := pow_pos eps_pos 2
+
+/-- The denotation of `ε` is Mathlib's `single 1 1`. -/
+theorem toHahn_eps : toHahn (ε : P) = HahnSeries.single 1 1 := toHahn_ε
 
 end LeviCivita.Test

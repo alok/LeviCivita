@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash  # implies -eo pipefail
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch Mathlib cache
+        run: lake exe cache get
+
+      # The default target includes `LeviCivita.Test` (#guard_msgs + decide tests) and
+      # `LeviCivita.AxiomAudit` (#assert_axioms, which errors on sorryAx / ofReduceBool /
+      # trustCompiler / any custom axiom), so this step fails if either fails.
+      - name: Build, tests, axiom audit
+        run: lake build 2>&1 | tee build.log
+
+      - name: No sorry anywhere in the build
+        run: |
+          if grep -n "declaration uses" build.log; then
+            echo "::error::build contains sorry"
+            exit 1
+          fi
+
+      - name: Forbidden constructs in sources
+        run: |
+          if grep -rnE '^\s*(axiom|@\[implemented_by|@\[extern)|native_decide\b' \
+              --include='*.lean' LeviCivita LeviCivita.lean | grep -v -- '--' | grep -v '`native_decide`'; then
+            echo "::error::forbidden construct in core sources"
+            exit 1
+          fi

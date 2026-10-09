@@ -31,4 +31,4 @@ open LeviCivita LeviCivita.Poly LeviCivita.Test
   one_add_eps_mul_one_sub_eps H_sq_gt neg_eps_lt_zero eps_le_eps not_H_le_eps
   eps_lt_one_thousandth' eps_pos' eps_sq_lt_eps' ten_pow_nine_lt_H' eps_mul_H'
   one_add_eps_mul_one_sub_eps' int_eps_mul_H int_ten_pow_nine_lt_H int_eps_pos
-  eps_sq_pos toHahn_eps
+  sqrt_eps_sq eps_lt_sqrt_eps eps_sq_pos toHahn_eps

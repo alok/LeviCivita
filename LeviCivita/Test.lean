@@ -106,6 +106,12 @@ theorem int_ten_pow_nine_lt_H : (10 : Poly ℤ ℤ) ^ 9 < H := by decide
 
 theorem int_eps_pos : (0 : Poly ℤ ℤ) < ε := by decide
 
+/-! ### Rational exponents (`Γ = ℚ`): `√ε` -/
+
+theorem sqrt_eps_sq : (single (1 / 2) 1 : Poly ℚ ℚ) ^ 2 = ε := by decide +kernel
+
+theorem eps_lt_sqrt_eps : (ε : Poly ℚ ℚ) < single (1 / 2) 1 := by decide +kernel
+
 /-! ### Consequences via the transported structure (no computation) -/
 
 /-- An ordered-ring fact derived from the transported `IsStrictOrderedRing` instance. -/

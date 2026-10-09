@@ -9,6 +9,36 @@ import Mathlib.Algebra.MvPolynomial.Degrees
 import Mathlib.Combinatorics.Colex
 import Mathlib.Tactic.Ring
 
+
+/-!
+# Simulation of Simplicity (SoS) over `Poly ℤ R`
+
+Coordinate `j` of input point `i` is perturbed to `x i j + ε^(b^(j + d·i))` (`sosPoint`). A
+predicate evaluated on perturbed points (`orient2dSoS`, `orient3dSoS`, `incircleSoS`,
+`insphereSoS`) is an exact, computable element of `Poly ℤ R`.
+
+Main results (any nontrivial commutative ring `R`, any input, even fully degenerate):
+
+* `orient2dSoS_ne_zero`, `orient3dSoS_ne_zero` (`b ≥ 2`), `incircleSoS_ne_zero`,
+  `insphereSoS_ne_zero` (`b ≥ 4`, `(2 : R) ≠ 0`): the perturbed value is never `0` when the
+  point indices are pairwise distinct;
+* `orient2dSoS_sign` etc.: when the unperturbed value is nonzero, the perturbed sign is its sign
+  (the standard part of the perturbed value is the unperturbed value);
+* `orient2dSoS_swap₁₂` etc.: relabeling acts by the sign of the permutation.
+
+Proof of nonvanishing. Replace each perturbation by a variable: `D ∈ MvPolynomial (Fin n × Fin d) R`
+is the predicate on points `C (x i j) + X (i, j)`, and the perturbed value is the image of `D`
+under `X k ↦ ε^(b^(w k))` (`sosSubst`, by naturality `map_orient2d`).
+1. `D ≠ 0`: evaluating at `X (i, j) := t i j - x i j` gives the predicate at chosen points `t`
+   (e.g. `(1,0), (0,1), (0,0)`), which is `1` (or `2` for the lifted predicates).
+2. Every variable has degree `< b` in `D` (`DegLe`/`DegBd`: the matrix columns involve
+   disjoint coordinates, so the determinant is multilinear in them, plus `2` for a lifted column).
+3. `sosSubst_ne_zero`: monomials with exponents `< b` go to distinct powers of `ε` (base-`b`
+   digits, `digit_extract`), so the coefficient of `D` at any monomial survives.
+
+`b = 4` is a single perturbation that works for all four predicates.
+-/
+
 set_option linter.unusedSectionVars false
 
 namespace LeviCivita.Geometry

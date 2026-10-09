@@ -4,6 +4,26 @@ Released under Apache 2.0 license as described in the file LICENSE.
 -/
 import LeviCivita.Geometry.SoS
 
+
+/-!
+# Lazy sign evaluation
+
+* `Poly.truncLT c p`: the terms of `p` with exponent `< c` (`toHahn_truncLT`: it is
+  `HahnSeries.truncLT`).
+* `Poly.mulTrunc c p q`: the product with every term of exponent `≥ c` dropped, without forming
+  those terms (`mulTrunc_eq : mulTrunc c p q = (p * q).truncLT c`).
+* `truncLT_mul`: for **finite** `p, q`, `(p * q).truncLT c = (p.truncLT c * q.truncLT c).truncLT c`.
+  Finiteness is necessary (`ε² · ε⁻¹`).
+* `LazySign.Expr`: ring expressions over `Poly` leaves; `evalTrunc c` evaluates with truncation
+  at every node; `evalTrunc_eq`: for finite leaves this is the truncation of the exact value.
+* `lazySign c e`: the sign of the truncated value, or `none` if it vanishes.
+  `lazySign_sound`: `some s` is the exact sign. `lazySign_complete`: above all exponents it is
+  exact.
+* `lazySignIter`: precisions `c, 2c, 4c, …`; `orient2dLazy`: the lazy SoS `orient2d`. The first
+  pass (`c = 1`) is the unperturbed computation; perturbation terms are only computed when it
+  vanishes.
+-/
+
 set_option linter.unusedSectionVars false
 
 namespace LeviCivita

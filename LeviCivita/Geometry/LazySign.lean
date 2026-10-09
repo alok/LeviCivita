@@ -368,17 +368,19 @@ theorem lazySign_complete_of_ne_zero [LinearOrder R] {c : Γ} {e : Expr Γ R}
 section Driver
 variable {R : Type*} [CommRing R] [DecidableEq R] [LinearOrder R]
 
-/-- Try precisions `c, 2c, 4c, …`, at most `fuel` times. Start with `c = 1`: the first pass
-keeps only the `ε^0` terms, i.e. it is the plain unperturbed computation. -/
-def lazySignIter (e : Expr ℤ R) : ℕ → ℤ → Option ℤ
+/-- Try precisions `c, next c, next (next c), …`, at most `fuel` times. Start with `c = 1`: the
+first pass keeps only the `ε^0` terms, i.e. it is the plain unperturbed computation. Soundness
+holds for any `next`; completeness needs `next c ≥ 2c`. The SoS drivers use `c ↦ c² + 1`,
+because SoS exponents are huge (`b^(j + d i)`): doubling would need thousands of passes. -/
+def lazySignIter (e : Expr ℤ R) (next : ℤ → ℤ) : ℕ → ℤ → Option ℤ
   | 0, _ => none
   | fuel + 1, c =>
     match lazySign c e with
     | some s => some s
-    | none => lazySignIter e fuel (2 * c)
+    | none => lazySignIter e next fuel (next c)
 
-theorem lazySignIter_sound {e : Expr ℤ R} (h : e.LeavesFinite) :
-    ∀ {fuel : ℕ} {c s : ℤ}, lazySignIter e fuel c = some s → e.eval.sign = s
+theorem lazySignIter_sound {e : Expr ℤ R} (h : e.LeavesFinite) {next : ℤ → ℤ} :
+    ∀ {fuel : ℕ} {c s : ℤ}, lazySignIter e next fuel c = some s → e.eval.sign = s
   | 0, _, _, hs => by simp [lazySignIter] at hs
   | fuel + 1, c, s, hs => by
     unfold lazySignIter at hs
@@ -388,23 +390,32 @@ theorem lazySignIter_sound {e : Expr ℤ R} (h : e.LeavesFinite) :
       exact lazySign_sound h hs'
     · exact lazySignIter_sound h hs
 
-/-- **Completeness of the driver**: if `2^fuel · c` exceeds every exponent of a nonzero value,
-the driver returns its sign. -/
-theorem lazySignIter_complete {e : Expr ℤ R} (h : e.LeavesFinite) (h0 : e.eval ≠ 0) :
-    ∀ {fuel : ℕ} {c : ℤ}, (∀ t ∈ e.eval.terms, t.1 < 2 ^ fuel * c) →
-      lazySignIter e (fuel + 1) c = some e.eval.sign
-  | 0, c, hc => by
+/-- **Completeness of the driver**: if `next` at least doubles positive precisions and
+`2^fuel · c` exceeds every exponent of a nonzero value, the driver returns its sign. -/
+theorem lazySignIter_complete {e : Expr ℤ R} (h : e.LeavesFinite) (h0 : e.eval ≠ 0)
+    {next : ℤ → ℤ} (hnext : ∀ c, 0 < c → 2 * c ≤ next c) :
+    ∀ {fuel : ℕ} {c : ℤ}, 0 < c → (∀ t ∈ e.eval.terms, t.1 < 2 ^ fuel * c) →
+      lazySignIter e next (fuel + 1) c = some e.eval.sign
+  | 0, c, _, hc => by
     simp only [pow_zero, one_mul] at hc
     simp [lazySignIter, lazySign_complete_of_ne_zero h hc h0]
-  | fuel + 1, c, hc => by
+  | fuel + 1, c, hpos, hc => by
     unfold lazySignIter
     split
     · rename_i s hs
       rw [lazySign_sound h hs]
-    · exact lazySignIter_complete h h0 (fun t ht => by
-        have := hc t ht
-        rw [pow_succ] at this
-        linarith)
+    · have h2 := hnext c hpos
+      refine lazySignIter_complete h h0 hnext (by omega) (fun t ht => ?_)
+      have := hc t ht
+      have hp : (0 : ℤ) < 2 ^ fuel := by positivity
+      rw [pow_succ] at this
+      nlinarith
+
+/-- The squaring step used by the SoS drivers. -/
+def sqStep (c : ℤ) : ℤ := c * c + 1
+
+theorem sqStep_ge (c : ℤ) (hc : 0 < c) : 2 * c ≤ sqStep c := by
+  unfold sqStep; nlinarith
 
 end Driver
 
@@ -431,7 +442,7 @@ theorem leavesFinite_orient2dExpr (b : ℕ) (x : Fin n → Fin 2 → R) (i k l :
 when the unperturbed value vanishes. -/
 def orient2dLazy [LinearOrder R] (b : ℕ) (x : Fin n → Fin 2 → R) (i k l : Fin n) (fuel : ℕ := 64) :
     Option ℤ :=
-  lazySignIter (orient2dExpr b x i k l) fuel 1
+  lazySignIter (orient2dExpr b x i k l) sqStep fuel 1
 
 theorem orient2dLazy_sound [LinearOrder R] {b : ℕ} {x : Fin n → Fin 2 → R} {i k l : Fin n} {fuel : ℕ}
     {s : ℤ} (h : orient2dLazy b x i k l fuel = some s) : (orient2dSoS b x i k l).sign = s := by
@@ -445,10 +456,42 @@ theorem orient2dLazy_complete [LinearOrder R] [Nontrivial R] {b : ℕ} (hb : 2 �
     orient2dLazy b x i k l (fuel + 1) = some (orient2dSoS b x i k l).sign := by
   have := lazySignIter_complete (leavesFinite_orient2dExpr b x i k l)
     (by rw [eval_orient2dExpr]; exact orient2dSoS_ne_zero hb x hik hil hkl)
-    (fuel := fuel) (c := 1) (by rw [eval_orient2dExpr]; simpa using hc)
+    sqStep_ge (fuel := fuel) (c := 1) one_pos (by rw [eval_orient2dExpr]; simpa using hc)
   rwa [eval_orient2dExpr] at this
 
 end Orient2d
+
+/-! ### Lazy SoS `incircle` -/
+
+section Incircle
+open Geometry
+variable {R : Type*} [CommRing R] [DecidableEq R] {n : ℕ}
+
+/-- The SoS-perturbed `incircle` as an expression tree. -/
+def incircleExpr (b : ℕ) (x : Fin n → Fin 2 → R) (i k l m : Fin n) : Expr ℤ R :=
+  incircle (fun j => leaf (sosPoint b x i j)) (fun j => leaf (sosPoint b x k j))
+    (fun j => leaf (sosPoint b x l j)) (fun j => leaf (sosPoint b x m j))
+
+theorem eval_incircleExpr (b : ℕ) (x : Fin n → Fin 2 → R) (i k l m : Fin n) :
+    (incircleExpr b x i k l m).eval = incircleSoS b x i k l m := by
+  simp [incircleExpr, incircle, det3, incircleSoS]
+
+theorem leavesFinite_incircleExpr (b : ℕ) (x : Fin n → Fin 2 → R) (i k l m : Fin n) :
+    (incircleExpr b x i k l m).LeavesFinite := by
+  simp [incircleExpr, incircle, det3, isFinite_sosPoint]
+
+/-- Lazy SoS `incircle`. -/
+def incircleLazy [LinearOrder R] (b : ℕ) (x : Fin n → Fin 2 → R) (i k l m : Fin n)
+    (fuel : ℕ := 64) : Option ℤ :=
+  lazySignIter (incircleExpr b x i k l m) sqStep fuel 1
+
+theorem incircleLazy_sound [LinearOrder R] {b : ℕ} {x : Fin n → Fin 2 → R} {i k l m : Fin n}
+    {fuel : ℕ} {s : ℤ} (h : incircleLazy b x i k l m fuel = some s) :
+    (incircleSoS b x i k l m).sign = s := by
+  rw [← eval_incircleExpr]
+  exact lazySignIter_sound (leavesFinite_incircleExpr b x i k l m) h
+
+end Incircle
 
 end LazySign
 

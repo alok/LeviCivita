@@ -91,17 +91,18 @@ open LeviCivita.Geometry LeviCivita.LazySign LeviCivita.TestM3
   orient3dSoS_sign_ne_zero signOf_int
 
 -- Truncation and lazy sign
-#assert_axioms Poly.truncLT Poly.mulTrunc Poly.toHahn_truncLT Poly.mulTrunc_eq
+#assert_axioms incircleExpr eval_incircleExpr incircleLazy incircleLazy_sound
+  Poly.truncLT Poly.mulTrunc Poly.toHahn_truncLT Poly.mulTrunc_eq
   Poly.truncLT_add Poly.truncLT_neg Poly.truncLT_sub Poly.mulTrunc_truncLT Poly.truncLT_mul
   Poly.leadCoeff_truncLT Poly.sign_truncLT Poly.truncLT_eq_self
   Expr.evalTrunc_eq lazySign lazySign_sound lazySign_complete lazySign_complete_of_ne_zero
-  lazySignIter lazySignIter_sound lazySignIter_complete orient2dExpr eval_orient2dExpr
+  lazySignIter lazySignIter_sound lazySignIter_complete sqStep sqStep_ge orient2dExpr eval_orient2dExpr
   orient2dLazy orient2dLazy_sound orient2dLazy_complete
 
 -- M3 tests
 #assert_axioms orient2d_ccw incircle_inside orient2d_rat sos_collinear sos_collinear_swap
   sos_coincident sos_coincident_swap sos_generic sos_ne_zero sos_sign_ne_zero sos_generic'
   sos3_coplanar sos3_coplanar_swap sos_cocircular sos_incircle_ne_zero lazy_collinear
-  lazy_agrees lazy_sound_example truncLT_example mulTrunc_example
+  lazy_agrees lazy_sound_example lazy_cocircular truncLT_example mulTrunc_example
 
 end M3

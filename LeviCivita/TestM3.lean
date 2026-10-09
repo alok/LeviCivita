@@ -130,6 +130,11 @@ theorem lazy_sound_example {s : ℤ} (h : orient2dLazy 4 pts 1 3 4 = some s) :
     (orient2dSoS 4 pts 1 3 4).sign = s :=
   orient2dLazy_sound h
 
+/-- info: (some 1, some (-1)) -/
+#guard_msgs in #eval (incircleLazy 4 circ 0 1 2 3, incircleLazy 4 circ 1 0 2 3)
+
+theorem lazy_cocircular : incircleLazy 4 circ 0 1 2 3 = some 1 := by decide +kernel
+
 theorem truncLT_example : (((1 : Poly ℤ ℤ) + ε) * (1 + ε)).truncLT 2 = 1 + 2 * ε := by decide
 
 theorem mulTrunc_example : mulTrunc 2 ((1 : Poly ℤ ℤ) + ε) (1 + ε) = 1 + 2 * ε := by decide

@@ -3,6 +3,7 @@ Copyright (c) 2026 Alok Singh. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 -/
 import LeviCivita.Geometry.LazySign
+import Mathlib.RingTheory.HahnSeries.Summable
 
 /-!
 # Precision-tracked approximations
@@ -427,6 +428,213 @@ theorem Represents.mul_exact {a : Approx Γ R} {x : R⟦Γ⟧} (ha : a.Represent
   simp only [mulPrec, exact, ord, min_top_right, WithTop.top_add, le_refl]
 
 end Ring
+
+/-! ### Certified sign: `accept | reject | unresolved` -/
+
+section SignDef
+variable [LinearOrder Γ] [Zero R] [LinearOrder R]
+
+/-- The sign of the represented series, if the approximation determines it: always for exact
+approximations, otherwise exactly when the leading term of the known part is below the precision.
+`none` means "unresolved: raise the precision and retry". -/
+def sign? (a : Approx Γ R) : Option ℤ :=
+  if a.prec = ⊤ ∨ a.Certified then some a.val.sign else none
+
+theorem sign?_exact (p : Poly Γ R) : (exact p).sign? = some p.sign :=
+  ite_eq_left (Or.inl rfl)
+
+theorem sign?_of_certified {a : Approx Γ R} (h : a.Certified) : a.sign? = some a.val.sign :=
+  ite_eq_left (Or.inr h)
+
+theorem sign?_eq_none_iff {a : Approx Γ R} : a.sign? = none ↔ a.prec ≠ ⊤ ∧ ¬a.Certified := by
+  rw [sign?, ite_eq_right_iff]
+  simp [not_or]
+
+/-- The outcome of a certified positivity test. -/
+inductive Verdict
+  /-- The represented number is certainly positive. -/
+  | accept
+  /-- The represented number is certainly `≤ 0`. -/
+  | reject
+  /-- The precision is insufficient to decide. -/
+  | unresolved
+  deriving DecidableEq, Repr
+
+/-- Certified test of `0 < x`. -/
+def decidePos? (a : Approx Γ R) : Verdict :=
+  match a.sign? with
+  | none => .unresolved
+  | some s => if s = 1 then .accept else .reject
+
+theorem decidePos?_exact_ne (p : Poly Γ R) : (exact p).decidePos? ≠ .unresolved := by
+  unfold decidePos?
+  rw [sign?_exact]
+  dsimp only
+  split_ifs <;> simp
+
+end SignDef
+
+section Sign
+variable [AddCommMonoid Γ] [LinearOrder Γ] [IsOrderedCancelAddMonoid Γ] [CommRing R]
+  [LinearOrder R] [IsStrictOrderedRing R] [DecidableEq R]
+
+/-- When `sign?` answers, the represented series has the leading coefficient of the known part. -/
+theorem Represents.leadingCoeff_eq_of_sign? {a : Approx Γ R} {x : R⟦Γ⟧} {s : ℤ}
+    (ha : a.Represents x) (hs : a.sign? = some s) :
+    s = a.val.sign ∧ x.leadingCoeff = (toHahn a.val).leadingCoeff := by
+  unfold sign? at hs
+  split_ifs at hs with h
+  · refine ⟨(Option.some.inj hs).symm, ?_⟩
+    rcases h with h | h
+    · obtain ⟨v, p⟩ := a
+      cases h
+      rw [represents_top_iff.1 ha]
+    · rw [ha.leadingCoeff_eq h, leadCoeff_eq_leadingCoeff]
+
+/-- **Soundness of `sign?`.** If it answers `some s`, then `s` is the sign of every represented
+series in the lexicographic order of `Lex R⟦Γ⟧`. -/
+theorem sign?_sound {a : Approx Γ R} {x : R⟦Γ⟧} {s : ℤ} (hs : a.sign? = some s)
+    (ha : a.Represents x) :
+    (s = 1 ↔ 0 < toLex x) ∧ (s = -1 ↔ toLex x < 0) ∧ (s = 0 ↔ x = 0) := by
+  obtain ⟨rfl, hl⟩ := ha.leadingCoeff_eq_of_sign? hs
+  refine ⟨?_, ?_, ?_⟩
+  · rw [sign_eq_one_iff, ← leadingCoeff_pos_iff, ← leadingCoeff_pos_iff, ofLex_toLex,
+      ofLex_toLex, hl]
+  · rw [sign_eq_neg_one_iff, ← leadingCoeff_neg_iff, ← leadingCoeff_neg_iff, ofLex_toLex,
+      ofLex_toLex, hl]
+  · rw [sign_eq_zero_iff, ← leadingCoeff_eq_zero, hl, leadingCoeff_eq_zero, ← map_zero toHahn,
+      toHahn_injective.eq_iff]
+
+theorem decidePos?_accept {a : Approx Γ R} {x : R⟦Γ⟧} (h : a.decidePos? = .accept)
+    (ha : a.Represents x) : 0 < toLex x := by
+  unfold decidePos? at h
+  split at h
+  · cases h
+  · rename_i s hs
+    split_ifs at h with h1
+    exact (sign?_sound hs ha).1.1 h1
+
+theorem decidePos?_reject {a : Approx Γ R} {x : R⟦Γ⟧} (h : a.decidePos? = .reject)
+    (ha : a.Represents x) : toLex x ≤ 0 := by
+  unfold decidePos? at h
+  split at h
+  · cases h
+  · rename_i s hs
+    split_ifs at h with h1
+    exact not_lt.1 fun hx => h1 ((sign?_sound hs ha).1.2 hx)
+
+end Sign
+
+/-! ### Inverse (`R` a field, `Γ` a group)
+
+`inv?` computes a candidate `y ≈ x⁻¹` by Newton iteration and then **certifies** its precision
+from the residual `1 - x y`: since `x⁻¹ - y = x⁻¹ (1 - x y)`,
+`ord (x⁻¹ - y) = -ord x + ord (1 - x y)`, and `ord (1 - x y)` is bounded below by the order of a
+sound approximation of `1 - x y`. The soundness theorem therefore holds for *any* candidate; the
+Newton iteration only affects how good the certified precision is. -/
+
+section Inv
+variable [AddCommGroup Γ] [LinearOrder Γ] [IsOrderedAddMonoid Γ] [Field R] [DecidableEq R]
+
+/-- `n` Newton steps `y ↦ y (2 - u y)` for `1 / u` from `y = 1`, truncated at precision `q`. For
+`u = 1 + δ` with `0 < ord δ`, step `k` is correct below `min q (2^k ord δ)`. -/
+def newtonInv (q : WithTop Γ) (u : Poly Γ R) : ℕ → Poly Γ R
+  | 0 => 1
+  | n + 1 =>
+    let y := newtonInv q u n
+    mulTruncTop q y (2 - mulTruncTop q u y)
+
+/-- The certified precision of a candidate inverse `y` of `x ≈ a` with `ord x = e`:
+`-e + ord(1 - x y)`, where `1 - x y` is approximated by `1 - a.val * y` at precision
+`a.prec + ord y`. -/
+def invPrec (a : Approx Γ R) (e : Γ) (y : Poly Γ R) : WithTop Γ :=
+  let P := a.prec + y.leadExp
+  min (1 - mulTruncTop P a.val y).leadExp P + ((-e : Γ) : WithTop Γ)
+
+/-- The inverse given the leading exponent `e` and coefficient `r` of the known part: normalize
+to `u = x / (r ε^e) = 1 + δ` (relative precision `a.prec - e`), run `n` Newton steps, scale back,
+and certify the precision by the residual (`invPrec`). -/
+def invCore (n : ℕ) (a : Approx Γ R) (e : Γ) (r : R) : Approx Γ R :=
+  let s : Poly Γ R := single (-e) r⁻¹
+  let q : WithTop Γ := a.prec + ((-e : Γ) : WithTop Γ)
+  let y := s * newtonInv q (mulTruncTop q a.val s) n
+  ⟨y.truncTop (invPrec a e y), invPrec a e y⟩
+
+/-- Certified inverse with `n` Newton steps; `none` if the leading term of the known part is not
+certified (then `x` might be `0`, and its order is unknown). -/
+def inv? (n : ℕ) (a : Approx Γ R) : Option (Approx Γ R) :=
+  match a.val.terms with
+  | [] => none
+  | (e, r) :: _ => if (e : WithTop Γ) < a.prec then some (invCore n a e r) else none
+
+theorem orderTop_inv {x : R⟦Γ⟧} {e : Γ} (hx : x.orderTop = e) :
+    x⁻¹.orderTop = ((-e : Γ) : WithTop Γ) := by
+  have hx0 : x ≠ 0 := fun h => by simp [h] at hx
+  have h1 := orderTop_mul x x⁻¹
+  rw [mul_inv_cancel₀ hx0, orderTop_one, hx] at h1
+  have hne : x⁻¹.orderTop ≠ ⊤ := fun h => by simp [h] at h1
+  obtain ⟨g, hg⟩ := WithTop.ne_top_iff_exists.1 hne
+  rw [← hg, ← WithTop.coe_add, ← WithTop.coe_zero, WithTop.coe_eq_coe] at h1
+  rw [← hg, eq_neg_of_add_eq_zero_right h1.symm]
+
+/-- **Residual certificate.** For any candidate `y`, `y` approximates `x⁻¹` at precision
+`invPrec a e y`, provided `a` is certified with leading exponent `e`. -/
+theorem Represents.inv_of_residual {a : Approx Γ R} {x : R⟦Γ⟧} (ha : a.Represents x) {e : Γ}
+    (he : a.val.leadExp = e) (hc : a.Certified) (y : Poly Γ R) :
+    (⟨y, invPrec a e y⟩ : Approx Γ R).Represents x⁻¹ := by
+  have hx0 := ha.ne_zero hc
+  have hxe : x.orderTop = e := (ha.orderTop_eq hc).trans he
+  set P := a.prec + y.leadExp
+  -- `1 - a.val * y` approximates `1 - x y` at precision `P`
+  have hm := ha.mul_exact y
+  have hres : (⟨1 - mulTruncTop P a.val y, P⟩ : Approx Γ R).Represents (1 - x * toHahn y) := by
+    refine represents_iff_le_orderTop.2 ?_
+    have e1 : 1 - x * toHahn y - toHahn (1 - mulTruncTop P a.val y) =
+        -(x * toHahn y - toHahn (mulTruncTop P a.val y)) := by
+      rw [map_sub, map_one]; abel
+    rw [e1, orderTop_neg]
+    exact represents_iff_le_orderTop.1 hm
+  have hle := hres.ord_le
+  refine represents_iff_le_orderTop.2 ?_
+  have e2 : x⁻¹ - toHahn y = x⁻¹ * (1 - x * toHahn y) := by
+    rw [mul_sub, mul_one, ← mul_assoc, inv_mul_cancel₀ hx0, one_mul]
+  rw [e2, orderTop_mul, orderTop_inv hxe, add_comm]
+  exact add_le_add hle le_rfl
+
+theorem Represents.invCore {a : Approx Γ R} {x : R⟦Γ⟧} (ha : a.Represents x) {e : Γ}
+    (he : a.val.leadExp = e) (hc : a.Certified) (n : ℕ) (r : R) :
+    (invCore n a e r).Represents x⁻¹ :=
+  (represents_truncTop_iff le_rfl).2 (ha.inv_of_residual he hc _)
+
+theorem inv?_isSome {a : Approx Γ R} (hc : a.Certified) (n : ℕ) : (a.inv? n).isSome := by
+  unfold inv?
+  unfold Certified leadExp at hc
+  split
+  · rename_i h; rw [h] at hc; exact absurd hc (not_lt.2 le_top)
+  · rename_i e r l h
+    rw [h] at hc
+    simp [hc]
+
+/-- **Soundness of `inv?`.** -/
+theorem Represents.inv? {a b : Approx Γ R} {x : R⟦Γ⟧} {n : ℕ} (ha : a.Represents x)
+    (h : a.inv? n = some b) : b.Represents x⁻¹ := by
+  unfold Approx.inv? at h
+  split at h
+  · cases h
+  · rename_i e r l hterms
+    split_ifs at h with hlt
+    cases h
+    have he : a.val.leadExp = e := by unfold leadExp; rw [hterms]
+    exact ha.invCore he (by rw [Certified, he]; exact hlt) n r
+
+/-- `inv?` in the form "certified, hence nonzero, hence invertible with a sound result". -/
+theorem exists_inv?_represents {a : Approx Γ R} {x : R⟦Γ⟧} (ha : a.Represents x)
+    (hc : a.Certified) (n : ℕ) : x ≠ 0 ∧ ∃ b, a.inv? n = some b ∧ b.Represents x⁻¹ := by
+  refine ⟨ha.ne_zero hc, ?_⟩
+  obtain ⟨b, hb⟩ := Option.isSome_iff_exists.1 (inv?_isSome hc n)
+  exact ⟨b, hb, ha.inv? hb⟩
+
+end Inv
 
 end Approx
 

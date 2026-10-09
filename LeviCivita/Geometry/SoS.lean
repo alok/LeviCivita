@@ -257,6 +257,75 @@ theorem DegLe.le_one {f : MvPolynomial (Fin n × Fin d) R} {S : Finset (Fin d)} 
 
 end DegLe
 
+/-! ### Degree bounds with multiplicities (for the lifted predicates) -/
+
+section DegBd
+variable [Nontrivial R] {n d : ℕ}
+
+/-- `DegBd β f`: variable `k` occurs in `f` with degree `≤ β k`. -/
+def DegBd (β : Fin n × Fin d → ℕ) (f : MvPolynomial (Fin n × Fin d) R) : Prop :=
+  ∀ k, degreeOf k f ≤ β k
+
+theorem DegBd.mono {β γ : Fin n × Fin d → ℕ} {f : MvPolynomial (Fin n × Fin d) R}
+    (h : DegBd β f) (hle : ∀ k, β k ≤ γ k) : DegBd γ f := fun k => (h k).trans (hle k)
+
+theorem DegBd.add {β : Fin n × Fin d → ℕ} {f g : MvPolynomial (Fin n × Fin d) R}
+    (hf : DegBd β f) (hg : DegBd β g) : DegBd β (f + g) := fun k =>
+  (degreeOf_add_le k f g).trans (max_le (hf k) (hg k))
+
+theorem DegBd.sub {β : Fin n × Fin d → ℕ} {f g : MvPolynomial (Fin n × Fin d) R}
+    (hf : DegBd β f) (hg : DegBd β g) : DegBd β (f - g) := fun k =>
+  (degreeOf_sub_le k f g).trans (max_le (hf k) (hg k))
+
+theorem DegBd.mul {β γ : Fin n × Fin d → ℕ} {f g : MvPolynomial (Fin n × Fin d) R}
+    (hf : DegBd β f) (hg : DegBd γ g) : DegBd (β + γ) (f * g) := fun k =>
+  (degreeOf_mul_le k f g).trans (Nat.add_le_add (hf k) (hg k))
+
+/-- A 3×3 determinant whose column `c` has degree bound `βc` has bound `β₀ + β₁ + β₂`. -/
+theorem DegBd.det3 {β₀ β₁ β₂ : Fin n × Fin d → ℕ} {a b c e f g h i j : MvPolynomial (Fin n × Fin d) R}
+    (ha : DegBd β₀ a) (hb : DegBd β₁ b) (hc : DegBd β₂ c) (he : DegBd β₀ e) (hf : DegBd β₁ f)
+    (hg : DegBd β₂ g) (hh : DegBd β₀ h) (hi : DegBd β₁ i) (hj : DegBd β₂ j) :
+    DegBd (β₀ + β₁ + β₂) (Geometry.det3 a b c e f g h i j) := by
+  unfold Geometry.det3
+  have t : ∀ {x y z : MvPolynomial (Fin n × Fin d) R} {γ : Fin n × Fin d → ℕ},
+      DegBd γ x → DegBd γ y → DegBd γ z → DegBd γ (x - y + z) :=
+    fun hx hy hz => (hx.sub hy).add hz
+  refine t ?_ ?_ ?_
+  · exact (ha.mul (((hf.mul hj).sub ((hg.mul hi).mono fun k => by
+      simp only [Pi.add_apply]; omega)))).mono fun k => by simp only [Pi.add_apply]; omega
+  · exact (hb.mul (((he.mul hj).sub ((hg.mul hh).mono fun k => by
+      simp only [Pi.add_apply]; omega)))).mono fun k => by simp only [Pi.add_apply]; omega
+  · exact (hc.mul (((he.mul hi).sub ((hf.mul hh).mono fun k => by
+      simp only [Pi.add_apply]; omega)))).mono fun k => by simp only [Pi.add_apply]; omega
+
+/-- A 4×4 determinant whose column `c` has degree bound `βc` has bound `β₀ + β₁ + β₂ + β₃`. -/
+theorem DegBd.det4 {β₀ β₁ β₂ β₃ : Fin n × Fin d → ℕ}
+    {a b c e f g h i j k l m o p q r : MvPolynomial (Fin n × Fin d) R}
+    (ha : DegBd β₀ a) (hb : DegBd β₁ b) (hc : DegBd β₂ c) (he : DegBd β₃ e)
+    (hf : DegBd β₀ f) (hg : DegBd β₁ g) (hh : DegBd β₂ h) (hi : DegBd β₃ i)
+    (hj : DegBd β₀ j) (hk : DegBd β₁ k) (hl : DegBd β₂ l) (hm : DegBd β₃ m)
+    (ho : DegBd β₀ o) (hp : DegBd β₁ p) (hq : DegBd β₂ q) (hr : DegBd β₃ r) :
+    DegBd (β₀ + β₁ + β₂ + β₃) (Geometry.det4 a b c e f g h i j k l m o p q r) := by
+  unfold Geometry.det4
+  have e : ∀ {γ : Fin n × Fin d → ℕ}, (∀ x, γ x = β₀ x + β₁ x + β₂ x + β₃ x) →
+      ∀ x, γ x ≤ (β₀ + β₁ + β₂ + β₃) x := fun h x => by
+    have := h x; simp only [Pi.add_apply]; omega
+  refine (((?_ : DegBd _ _).sub ?_).add ?_).sub ?_
+  · exact (ha.mul (DegBd.det3 hg hh hi hk hl hm hp hq hr)).mono (e fun x => by
+      simp only [Pi.add_apply]; omega)
+  · exact (hb.mul (DegBd.det3 hf hh hi hj hl hm ho hq hr)).mono (e fun x => by
+      simp only [Pi.add_apply]; omega)
+  · exact (hc.mul (DegBd.det3 hf hg hi hj hk hm ho hp hr)).mono (e fun x => by
+      simp only [Pi.add_apply]; omega)
+  · exact (he.mul (DegBd.det3 hf hg hh hj hk hl ho hp hq)).mono (e fun x => by
+      simp only [Pi.add_apply]; omega)
+
+theorem DegBd.lt_of_le {β : Fin n × Fin d → ℕ} {f : MvPolynomial (Fin n × Fin d) R}
+    (h : DegBd β f) {b : ℕ} (hb : ∀ k, β k < b) : ∀ m ∈ f.support, ∀ k, m k < b :=
+  fun _ hm k => lt_of_le_of_lt ((monomial_le_degreeOf k hm).trans (h k)) (hb k)
+
+end DegBd
+
 /-! ### The perturbation -/
 
 section Perturb
@@ -366,6 +435,113 @@ theorem orient3dSoS_ne_zero [Nontrivial R] {b : ℕ} (hb : 2 ≤ b) (x : Fin n �
 
 end Orient3d
 
+/-! ### `incircle` and `insphere`
+
+The lifted column `|p - d|²` has degree `2` in the perturbation variables, so the perturbed
+determinants have degree `≤ 3` in each variable (one from a linear column, two from the lifted
+column, in the variables of the base point that occurs in every row). The base `b` must therefore
+be at least `4`; `b = 4` works for all four predicates at once. -/
+
+section Lifted
+variable {n : ℕ}
+
+/-- Indicator bound of coordinate `j`. -/
+def coordBd {d : ℕ} (j : Fin d) : Fin n × Fin d → ℕ := fun k => if k.2 ∈ ({j} : Finset _) then 1 else 0
+
+theorem degBd_mvPoint_sub [Nontrivial R] {d : ℕ} (x : Fin n → Fin d → R) (i i' : Fin n)
+    (j : Fin d) : DegBd (coordBd j) (mvPoint x i j - mvPoint x i' j) :=
+  degLe_mvPoint_sub x i i' j
+
+/-- SoS-perturbed `incircle`. Computable. -/
+def incircleSoS (b : ℕ) (x : Fin n → Fin 2 → R) (i k l m : Fin n) : Poly ℤ R :=
+  incircle (sosPoint b x i) (sosPoint b x k) (sosPoint b x l) (sosPoint b x m)
+
+/-- SoS-perturbed `insphere`. Computable. -/
+def insphereSoS (b : ℕ) (x : Fin n → Fin 3 → R) (i k l m o : Fin n) : Poly ℤ R :=
+  insphere (sosPoint b x i) (sosPoint b x k) (sosPoint b x l) (sosPoint b x m) (sosPoint b x o)
+
+/-- **SoS nonvanishing for `incircle`** (base `b ≥ 4`, distinct indices). The proof certifies
+`D ≠ 0` by an evaluation with value `2`, hence the hypothesis `(2 : R) ≠ 0` (true for `ℤ`, `ℚ`,
+any ordered ring). -/
+theorem incircleSoS_ne_zero [Nontrivial R] {b : ℕ} (hb : 4 ≤ b) (h2 : (2 : R) ≠ 0)
+    (x : Fin n → Fin 2 → R) {i k l m : Fin n}
+    (hik : i ≠ k) (hil : i ≠ l) (him : i ≠ m) (hkl : k ≠ l) (hkm : k ≠ m) (hlm : l ≠ m) :
+    incircleSoS b x i k l m ≠ 0 := by
+  set D := incircle (mvPoint x i) (mvPoint x k) (mvPoint x l) (mvPoint x m) with hD
+  have hsub : sosSubst b sosIdx D = incircleSoS b x i k l m := by
+    rw [hD, map_incircle, sosSubst_mvPoint, sosSubst_mvPoint, sosSubst_mvPoint,
+      sosSubst_mvPoint]; rfl
+  rw [← hsub]
+  refine sosSubst_ne_zero sosIdx_injective ?_ ?_
+  · -- evaluate at the point making the perturbed points `(1,0), (0,1), (-1,0), (0,0)`
+    intro h0
+    let t : Fin n → Fin 2 → R := fun a j =>
+      if a = i ∧ j = 0 then 1 else if a = k ∧ j = 1 then 1 else if a = l ∧ j = 0 then -1 else 0
+    have := congrArg (MvPolynomial.eval fun q : Fin n × Fin 2 => t q.1 q.2 - x q.1 q.2) h0
+    rw [hD, map_incircle, eval_mvPoint, eval_mvPoint, eval_mvPoint, eval_mvPoint,
+      map_zero] at this
+    simp [incircle, det3, t, hik, hil, hkl, hik.symm, hil.symm, him.symm, hkl.symm, hkm.symm,
+      hlm.symm] at this
+    exact h2 (by rw [← one_add_one_eq_two]; exact this)
+  · have sq : ∀ q : Fin n, DegBd (fun _ => 2)
+        ((mvPoint x q 0 - mvPoint x m 0) * (mvPoint x q 0 - mvPoint x m 0) +
+          (mvPoint x q 1 - mvPoint x m 1) * (mvPoint x q 1 - mvPoint x m 1)) := fun q =>
+      ((degBd_mvPoint_sub x q m 0).mul (degBd_mvPoint_sub x q m 0)).mono
+          (fun k => by simp only [coordBd, Pi.add_apply]; split_ifs <;> omega) |>.add
+        (((degBd_mvPoint_sub x q m 1).mul (degBd_mvPoint_sub x q m 1)).mono
+          (fun k => by simp only [coordBd, Pi.add_apply]; split_ifs <;> omega))
+    have h := DegBd.det3 (degBd_mvPoint_sub x i m 0) (degBd_mvPoint_sub x i m 1) (sq i)
+      (degBd_mvPoint_sub x k m 0) (degBd_mvPoint_sub x k m 1) (sq k)
+      (degBd_mvPoint_sub x l m 0) (degBd_mvPoint_sub x l m 1) (sq l)
+    refine h.lt_of_le fun q => ?_
+    simp only [coordBd, Pi.add_apply, Finset.mem_singleton]
+    split_ifs <;> omega
+
+/-- **SoS nonvanishing for `insphere`** (base `b ≥ 4`, distinct indices, `(2 : R) ≠ 0`). -/
+theorem insphereSoS_ne_zero [Nontrivial R] {b : ℕ} (hb : 4 ≤ b) (h2 : (2 : R) ≠ 0)
+    (x : Fin n → Fin 3 → R) {i k l m o : Fin n}
+    (hik : i ≠ k) (hil : i ≠ l) (him : i ≠ m) (hio : i ≠ o) (hkl : k ≠ l) (hkm : k ≠ m)
+    (hko : k ≠ o) (hlm : l ≠ m) (hlo : l ≠ o) (hmo : m ≠ o) :
+    insphereSoS b x i k l m o ≠ 0 := by
+  set D := insphere (mvPoint x i) (mvPoint x k) (mvPoint x l) (mvPoint x m) (mvPoint x o)
+    with hD
+  have hsub : sosSubst b sosIdx D = insphereSoS b x i k l m o := by
+    rw [hD, map_insphere, sosSubst_mvPoint, sosSubst_mvPoint, sosSubst_mvPoint,
+      sosSubst_mvPoint, sosSubst_mvPoint]; rfl
+  rw [← hsub]
+  refine sosSubst_ne_zero sosIdx_injective ?_ ?_
+  · -- perturbed points `e₀, e₁, e₂, -e₀, 0`
+    intro h0
+    let t : Fin n → Fin 3 → R := fun a j =>
+      if a = i ∧ j = 0 then 1 else if a = k ∧ j = 1 then 1 else if a = l ∧ j = 2 then 1
+      else if a = m ∧ j = 0 then -1 else 0
+    have := congrArg (MvPolynomial.eval fun q : Fin n × Fin 3 => t q.1 q.2 - x q.1 q.2) h0
+    rw [hD, map_insphere, eval_mvPoint, eval_mvPoint, eval_mvPoint, eval_mvPoint, eval_mvPoint,
+      map_zero] at this
+    simp [insphere, det4, det3, t, hik, hil, him, hkl, hkm, hlm, hik.symm, hil.symm, him.symm,
+      hio.symm, hkl.symm, hkm.symm, hko.symm, hlm.symm, hlo.symm, hmo.symm] at this
+    exact h2 (by rw [← one_add_one_eq_two]; exact this)
+  · have sq : ∀ q : Fin n, DegBd (fun _ => 2)
+        ((mvPoint x q 0 - mvPoint x o 0) * (mvPoint x q 0 - mvPoint x o 0) +
+          (mvPoint x q 1 - mvPoint x o 1) * (mvPoint x q 1 - mvPoint x o 1) +
+          (mvPoint x q 2 - mvPoint x o 2) * (mvPoint x q 2 - mvPoint x o 2)) := fun q =>
+      ((((degBd_mvPoint_sub x q o 0).mul (degBd_mvPoint_sub x q o 0)).mono
+          (fun k => by simp only [coordBd, Pi.add_apply]; split_ifs <;> omega)).add
+        (((degBd_mvPoint_sub x q o 1).mul (degBd_mvPoint_sub x q o 1)).mono
+          (fun k => by simp only [coordBd, Pi.add_apply]; split_ifs <;> omega))).add
+        (((degBd_mvPoint_sub x q o 2).mul (degBd_mvPoint_sub x q o 2)).mono
+          (fun k => by simp only [coordBd, Pi.add_apply]; split_ifs <;> omega))
+    have h := DegBd.det4
+      (degBd_mvPoint_sub x i o 0) (degBd_mvPoint_sub x i o 1) (degBd_mvPoint_sub x i o 2) (sq i)
+      (degBd_mvPoint_sub x k o 0) (degBd_mvPoint_sub x k o 1) (degBd_mvPoint_sub x k o 2) (sq k)
+      (degBd_mvPoint_sub x l o 0) (degBd_mvPoint_sub x l o 1) (degBd_mvPoint_sub x l o 2) (sq l)
+      (degBd_mvPoint_sub x m o 0) (degBd_mvPoint_sub x m o 1) (degBd_mvPoint_sub x m o 2) (sq m)
+    refine h.lt_of_le fun q => ?_
+    simp only [coordBd, Pi.add_apply, Finset.mem_singleton]
+    split_ifs <;> omega
+
+end Lifted
+
 /-! ### Sign agreement with the unperturbed predicate
 
 The perturbed value is a finite element whose standard part is the unperturbed value
@@ -470,6 +646,58 @@ theorem orient3dSoS_sign [LinearOrder R] {b : ℕ} (hb : 0 < b) (x : Fin n → F
     (orient3dSoS b x i k l m).sign = signOf (orient3d (x i) (x k) (x l) (x m)) := by
   rw [← orient3dSoS_std hb] at h ⊢
   exact sign_of_isFinite_of_std_ne_zero (orient3dSoS_isFinite b x i k l m) h
+
+theorem incircleSoS_isFinite (b : ℕ) (x : Fin n → Fin 2 → R) (i k l m : Fin n) :
+    (incircleSoS b x i k l m).IsFinite := by
+  have := (incircle (sosPointFin b x i) (sosPointFin b x k) (sosPointFin b x l)
+    (sosPointFin b x m)).2
+  rwa [← Subring.coe_subtype, map_incircle, subtype_sosPointFin, subtype_sosPointFin,
+    subtype_sosPointFin, subtype_sosPointFin] at this
+
+theorem incircleSoS_std {b : ℕ} (hb : 0 < b) (x : Fin n → Fin 2 → R) (i k l m : Fin n) :
+    (incircleSoS b x i k l m).std = incircle (x i) (x k) (x l) (x m) := by
+  have h := map_incircle stdPart (sosPointFin b x i) (sosPointFin b x k) (sosPointFin b x l)
+    (sosPointFin b x m)
+  rw [stdPart_sosPointFin hb, stdPart_sosPointFin hb, stdPart_sosPointFin hb,
+    stdPart_sosPointFin hb, stdPart_apply] at h
+  rw [← h]
+  have := map_incircle (finiteSubring : Subring (Poly ℤ R)).subtype
+    (sosPointFin b x i) (sosPointFin b x k) (sosPointFin b x l) (sosPointFin b x m)
+  rw [subtype_sosPointFin, subtype_sosPointFin, subtype_sosPointFin, subtype_sosPointFin] at this
+  rw [incircleSoS, ← this]; rfl
+
+theorem incircleSoS_sign [LinearOrder R] {b : ℕ} (hb : 0 < b) (x : Fin n → Fin 2 → R)
+    (i k l m : Fin n) (h : incircle (x i) (x k) (x l) (x m) ≠ 0) :
+    (incircleSoS b x i k l m).sign = signOf (incircle (x i) (x k) (x l) (x m)) := by
+  rw [← incircleSoS_std hb] at h ⊢
+  exact sign_of_isFinite_of_std_ne_zero (incircleSoS_isFinite b x i k l m) h
+
+theorem insphereSoS_isFinite (b : ℕ) (x : Fin n → Fin 3 → R) (i k l m o : Fin n) :
+    (insphereSoS b x i k l m o).IsFinite := by
+  have := (insphere (sosPointFin b x i) (sosPointFin b x k) (sosPointFin b x l)
+    (sosPointFin b x m) (sosPointFin b x o)).2
+  rwa [← Subring.coe_subtype, map_insphere, subtype_sosPointFin, subtype_sosPointFin,
+    subtype_sosPointFin, subtype_sosPointFin, subtype_sosPointFin] at this
+
+theorem insphereSoS_std {b : ℕ} (hb : 0 < b) (x : Fin n → Fin 3 → R) (i k l m o : Fin n) :
+    (insphereSoS b x i k l m o).std = insphere (x i) (x k) (x l) (x m) (x o) := by
+  have h := map_insphere stdPart (sosPointFin b x i) (sosPointFin b x k) (sosPointFin b x l)
+    (sosPointFin b x m) (sosPointFin b x o)
+  rw [stdPart_sosPointFin hb, stdPart_sosPointFin hb, stdPart_sosPointFin hb,
+    stdPart_sosPointFin hb, stdPart_sosPointFin hb, stdPart_apply] at h
+  rw [← h]
+  have := map_insphere (finiteSubring : Subring (Poly ℤ R)).subtype
+    (sosPointFin b x i) (sosPointFin b x k) (sosPointFin b x l) (sosPointFin b x m)
+    (sosPointFin b x o)
+  rw [subtype_sosPointFin, subtype_sosPointFin, subtype_sosPointFin, subtype_sosPointFin,
+    subtype_sosPointFin] at this
+  rw [insphereSoS, ← this]; rfl
+
+theorem insphereSoS_sign [LinearOrder R] {b : ℕ} (hb : 0 < b) (x : Fin n → Fin 3 → R)
+    (i k l m o : Fin n) (h : insphere (x i) (x k) (x l) (x m) (x o) ≠ 0) :
+    (insphereSoS b x i k l m o).sign = signOf (insphere (x i) (x k) (x l) (x m) (x o)) := by
+  rw [← insphereSoS_std hb] at h ⊢
+  exact sign_of_isFinite_of_std_ne_zero (insphereSoS_isFinite b x i k l m o) h
 
 end StdPart
 

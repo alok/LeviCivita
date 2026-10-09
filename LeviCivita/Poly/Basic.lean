@@ -68,6 +68,12 @@ instance : Zero (Poly Γ R) := ⟨⟨[], List.Pairwise.nil, by simp⟩⟩
 
 @[simp] theorem terms_zero : (0 : Poly Γ R).terms = [] := rfl
 
+instance [Repr Γ] [Repr R] : Repr (Poly Γ R) where
+  reprPrec p _ :=
+    match p.terms with
+    | [] => "0"
+    | ts => Std.Format.joinSep (ts.map fun t => repr t.2 ++ " ε^" ++ repr t.1) " + "
+
 /-- The monomial `c · ε^e` (zero if `c = 0`). -/
 def single [DecidableEq R] (e : Γ) (c : R) : Poly Γ R :=
   if h : c = 0 then 0 else ⟨[(e, c)], List.pairwise_singleton _ _, by simpa using h⟩

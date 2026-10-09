@@ -5,6 +5,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 import LeviCivita.Util.AssertAxioms
 import LeviCivita.Test
 import LeviCivita.TestM2
+import LeviCivita.TestM3
 
 /-!
 # Axiom audit
@@ -66,3 +67,42 @@ open LeviCivita LeviCivita.Poly LeviCivita.Test LeviCivita.TestM2
   aeval_eq_direct cube_expansion lexLinearOrder eps1_lt_eps2 eps1_pos eps1_mul_eps2_pos
   eps1_mul_eps2_lt_eps1 eps1_lt_eps2_pow eps2_lt_one_thousandth eps1_isInfinitesimal
   int_eps1_lt_eps2 int_eps1_mul_eps2_pos
+
+/-! ### M3 -/
+
+section M3
+open LeviCivita.Geometry LeviCivita.LazySign LeviCivita.TestM3
+
+-- Predicates: determinant specs, antisymmetry, translation, naturality
+#assert_axioms orient2d_eq_det orient3d_eq_det incircle_eq_det insphere_eq_det
+  orient2d_swap₁₂ orient2d_swap₂₃ orient2d_swap₁₃ orient2d_rotate orient3d_swap₁₂
+  orient3d_swap₂₃ orient3d_swap₃₄ incircle_swap₁₂ incircle_swap₃₄ insphere_swap₁₂
+  insphere_swap₄₅ orient2d_add_const orient3d_add_const incircle_add_const insphere_add_const
+  map_det3 map_det4 map_orient2d map_orient3d map_incircle map_insphere
+
+-- SoS
+#assert_axioms digit_sum_lt digit_extract sosSubst toHahn_sosSubst sosExpo_injOn
+  sosSubst_ne_zero DegLe.mul DegLe.det3 DegBd.det3 DegBd.det4 sosIdx_injective sosPoint
+  sosSubst_mvPoint orient2dSoS orient3dSoS incircleSoS insphereSoS
+  orient2dSoS_ne_zero orient3dSoS_ne_zero incircleSoS_ne_zero insphereSoS_ne_zero
+  sign_of_isFinite_of_std_ne_zero orient2dSoS_std orient2dSoS_sign orient3dSoS_std
+  orient3dSoS_sign incircleSoS_std incircleSoS_sign insphereSoS_std insphereSoS_sign
+  orient2dSoS_swap₁₂ orient2dSoS_sign_swap₁₂ Geometry.sign_neg orient2dSoS_sign_ne_zero
+  orient3dSoS_sign_ne_zero signOf_int
+
+-- Truncation and lazy sign
+#assert_axioms incircleExpr eval_incircleExpr incircleLazy incircleLazy_sound
+  Poly.truncLT Poly.mulTrunc Poly.toHahn_truncLT Poly.mulTrunc_eq
+  Poly.truncLT_add Poly.truncLT_neg Poly.truncLT_sub Poly.mulTrunc_truncLT Poly.truncLT_mul
+  Poly.leadCoeff_truncLT Poly.sign_truncLT Poly.truncLT_eq_self
+  Expr.evalTrunc_eq lazySign lazySign_sound lazySign_complete lazySign_complete_of_ne_zero
+  lazySignIter lazySignIter_sound lazySignIter_complete sqStep sqStep_ge orient2dExpr eval_orient2dExpr
+  orient2dLazy orient2dLazy_sound orient2dLazy_complete
+
+-- M3 tests
+#assert_axioms orient2d_ccw incircle_inside orient2d_rat sos_collinear sos_collinear_swap
+  sos_coincident sos_coincident_swap sos_generic sos_ne_zero sos_sign_ne_zero sos_generic'
+  sos3_coplanar sos3_coplanar_swap sos_cocircular sos_incircle_ne_zero lazy_collinear
+  lazy_agrees lazy_sound_example lazy_cocircular truncLT_example mulTrunc_example
+
+end M3

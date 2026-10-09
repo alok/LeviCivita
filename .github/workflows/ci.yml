@@ -28,6 +28,9 @@ jobs:
       - name: Build, tests, axiom audit
         run: lake build 2>&1 | tee build.log
 
+      - name: Benchmark script still elaborates (not run)
+        run: lake env lean bench/Bench.lean 2>&1 | tee -a build.log
+
       - name: No sorry anywhere in the build
         run: |
           if grep -n "declaration uses" build.log; then

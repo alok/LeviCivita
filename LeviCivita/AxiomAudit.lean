@@ -7,6 +7,7 @@ import LeviCivita.Test
 import LeviCivita.TestM2
 import LeviCivita.TestM3
 import LeviCivita.TestM4
+import LeviCivita.TestM5
 
 /-!
 # Axiom audit
@@ -165,7 +166,31 @@ section M5
   Pi.Lex.decidableLTFin Pi.Lex.linearOrderFin Pi.Lex.linearOrderFin_eq Pi.Lex.decidableLTOfFintype
   Pi.Lex.linearOrderOfFintype Pi.Lex.linearOrderOfFintype_eq
 
+-- compiled-code support (`@[csimp]` lemmas are proofs, so they are audited too)
+#assert_axioms Fin.lexCmpLoop Fin.lexCmpLoop_eq Fin.lexCmpFast Fin.lexCmp_eq_lexCmpFast
+  FinLex.tabulate FinLex.tabulateImpl FinLex.tabulate_eq_tabulateImpl FinLex.evalAddMonoidHom
+  FinLex.single_add FinLex.coe_add FinLex.coe_smul
+
 -- `MultiEps`
 #assert_axioms Poly.epsI Poly.epsI_pos Poly.epsI_lt_epsI Poly.isInfinitesimal_epsI
+
+-- SoS with independent infinitesimals
+section SoSMulti
+open LeviCivita.Geometry LeviCivita.TestM5
+#assert_axioms multiSubst multiExpo prod_single_pow_gen toHahn_multiSubst multiExpo_apply
+  multiExpo_injective multiSubst_ne_zero multiPoint multiSubst_mvPoint
+  orient2dSoSMulti orient3dSoSMulti incircleSoSMulti insphereSoSMulti
+  orient2dSoSMulti_ne_zero orient3dSoSMulti_ne_zero incircleSoSMulti_ne_zero
+  insphereSoSMulti_ne_zero isFinite_multiPoint std_multiPoint orient2dSoSMulti_std
+  orient2dSoSMulti_sign incircleSoSMulti_std incircleSoSMulti_sign orient2dSoSMulti_swap₁₂
+  orient2dSoSMulti_sign_ne_zero
+
+-- M5 tests
+#assert_axioms finLex_lt finLex_le finLex_ne finLex_single_lt finLex_min finLex_transfer
+  multi_collinear multi_collinear_swap multi_coincident multi_generic multi_generic'
+  multi_ne_zero multi_sign_ne_zero multi_cocircular multi_incircle_ne_zero
+  simLinearOrder sim_eps1_lt_eps2 sim_eps1_lt_eps2_pow sim_int_eps1_lt_eps2 sim_lex_lt
+  sim_linearOrder_eq
+end SoSMulti
 
 end M5

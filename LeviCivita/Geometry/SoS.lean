@@ -584,7 +584,7 @@ variable {n d : ℕ}
 /-- The sign of an element of an ordered ring, with the same shape as `Poly.sign`. -/
 def signOf [Zero R] [LinearOrder R] (r : R) : ℤ := if 0 < r then 1 else if r < 0 then -1 else 0
 
-theorem sign_eq_signOf_leadCoeff [LinearOrder R] (p : Poly ℤ R) :
+theorem sign_eq_signOf_leadCoeff {Γ : Type*} [LinearOrder Γ] [LinearOrder R] (p : Poly Γ R) :
     p.sign = signOf p.leadCoeff := rfl
 
 theorem signOf_int (r : ℤ) : signOf r = r.sign := by
@@ -621,9 +621,10 @@ theorem subtype_sosPointFin (b : ℕ) (x : Fin n → Fin d → R) (i : Fin n) :
     (finiteSubring : Subring (Poly ℤ R)).subtype ∘ sosPointFin b x i = sosPoint b x i := rfl
 
 /-- A finite element with nonzero standard part has that standard part as leading coefficient. -/
-theorem sign_of_isFinite_of_std_ne_zero [LinearOrder R] {p : Poly ℤ R} (hp : p.IsFinite)
+theorem sign_of_isFinite_of_std_ne_zero {Γ : Type*} [AddCommMonoid Γ] [LinearOrder Γ]
+    [IsOrderedCancelAddMonoid Γ] [LinearOrder R] {p : Poly Γ R} (hp : p.IsFinite)
     (h : p.std ≠ 0) : p.sign = signOf p.std := by
-  have hle : p.leadExp = ((0 : ℤ) : WithTop ℤ) := by
+  have hle : p.leadExp = ((0 : Γ) : WithTop Γ) := by
     refine le_antisymm ?_ hp
     by_contra hlt
     exact h (coeff_eq_zero_of_lt_leadExp (lt_of_not_ge hlt))

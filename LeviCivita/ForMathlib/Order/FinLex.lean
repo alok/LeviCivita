@@ -23,6 +23,7 @@ in the elaborator, and `#eval` works.
 
 * `Fin.lexCmp f g : Ordering`: lexicographic comparison of `f g : Fin k → α`, by structural
   recursion on `k`. `Fin.lexCmp_eq_lt_iff` identifies it with `Pi.Lex (· < ·) (· < ·)`.
+  Compiled code uses the linear loop `Fin.lexCmpFast` instead (`@[csimp]`).
 * `FinLex k α`: one-field structure around `Fin k → α`, with constructor `toFinLex` and
   projection `ofFinLex` (coerced to a function).
 * `FinLex.instLinearOrder`: computable linear order, with `compare = Fin.lexCmp`.
@@ -69,8 +70,11 @@ and `Pi.Lex.linearOrderFin` at the end of this file. See `UPSTREAM.md` in this r
 `whnf` (unlike well-founded recursion), and on a closed tuple such as `![1, 0]` each step
 reduces by `Matrix.vecCons`/`Fin.cons` computation. Searching for the first differing index
 through `Fintype` (`∃ i, …` over `Finset.univ`) would also be computable, but goes through
-`Multiset` quotients and is much slower to reduce. `Ordering.then` is `@[macro_inline]`, so
-the compiled comparison stops at the first difference.
+`Multiset` quotients and is much slower to reduce. Compiled code does not run this recursion:
+evaluating `Fin.tail (Fin.tail …)` re-enters nested closures, which is quadratic in `k`. The
+`@[csimp]` lemma `Fin.lexCmp_eq_lexCmpFast` replaces it by a linear loop over the indices
+(`Fin.lexCmpLoop`). `Ordering.then` is `@[macro_inline]`, so the compiled comparison stops at
+the first difference.
 
 The value type `α` is arbitrary: `[LinearOrder α]` for the order, `[AddCommMonoid α]`,
 `[AddCommGroup α]` and `[IsOrderedCancelAddMonoid α]` for the algebra.
@@ -135,6 +139,35 @@ theorem lexCmp_swap {k : ℕ} (f g : Fin k → α) : (lexCmp f g).swap = lexCmp 
   | succ k ih =>
     rw [lexCmp_succ, lexCmp_succ, Ordering.swap_then, ih, Std.OrientedOrd.eq_swap (a := f 0),
       Ordering.swap_swap]
+
+/-- Loop form of `lexCmp` for compiled code: compares the last `r` indices `k - r, …, k - 1`
+in order, without building `Fin.tail` closures (which make `lexCmp` quadratic in `k` when
+run). Connected to `lexCmp` by the `@[csimp]` lemma `lexCmp_eq_lexCmpLoop`. -/
+def lexCmpLoop {k : ℕ} (f g : Fin k → α) : (r : ℕ) → r ≤ k → Ordering
+  | 0, _ => .eq
+  | r + 1, h => (compare (f ⟨k - (r + 1), by omega⟩) (g ⟨k - (r + 1), by omega⟩)).then
+      (lexCmpLoop f g r (by omega))
+
+theorem lexCmpLoop_eq {k : ℕ} (f g : Fin k → α) (r : ℕ) (h : r ≤ k) :
+    lexCmpLoop f g r h =
+      lexCmp (fun j : Fin r => f ⟨k - r + j, by omega⟩) (fun j : Fin r => g ⟨k - r + j, by omega⟩) := by
+  induction r with
+  | zero => rfl
+  | succ r ih =>
+    rw [lexCmpLoop, lexCmp_succ, ih (by omega)]
+    congr 2
+    · funext j; simp only [Fin.tail, Fin.val_succ]; congr 2; omega
+    · funext j; simp only [Fin.tail, Fin.val_succ]; congr 2; omega
+
+/-- `lexCmp` as a single linear-time loop over all indices (the compiled implementation). -/
+def lexCmpFast {k : ℕ} (f g : Fin k → α) : Ordering := lexCmpLoop f g k le_rfl
+
+/-- Compiled code runs `lexCmp` as the linear-time loop `lexCmpFast`. -/
+@[csimp]
+theorem lexCmp_eq_lexCmpFast : @lexCmp = @lexCmpFast := by
+  funext α _ k f g
+  rw [lexCmpFast, lexCmpLoop_eq]
+  simp
 
 end Fin
 
@@ -275,11 +308,51 @@ end Order
 
 section Algebra
 
+/-- `tabulate f = toFinLex f`. It exists for compiled code only: the `@[csimp]` lemma
+`tabulate_eq_tabulateImpl` makes it store `f` as an `Array`, computed once. Without it,
+iterated pointwise operations build nested closures, and every comparison re-evaluates the
+whole closure tree. In the kernel and in `decide`, `tabulate` unfolds to `toFinLex`, so all
+the `coe_*` lemmas below stay `rfl`. (The result type is the structure, not a function type,
+so the compiler does not eta-expand the implementation and recompute the array per call.) -/
+def tabulate (f : Fin k → α) : FinLex k α := toFinLex f
+
+@[simp] theorem tabulate_eq (f : Fin k → α) : tabulate f = toFinLex f := rfl
+
+/-- Index into a tabulated tuple. -/
+@[noinline]
+def tabulateGet (a : Array α) (h : a.size = k) : Fin k → α := fun i => a[i.1]'(h ▸ i.2)
+
+/-- Compiled implementation of `tabulate`: tabulate once, then index. -/
+def tabulateImpl (f : Fin k → α) : FinLex k α :=
+  toFinLex (tabulateGet (Array.ofFn f) Array.size_ofFn)
+
+@[csimp]
+theorem tabulate_eq_tabulateImpl : @tabulate = @tabulateImpl := by
+  funext k α f
+  simp only [tabulate, tabulateImpl, toFinLex.injEq]
+  funext i
+  simp [tabulateGet]
+
+/-! The operations are top-level definitions, and the instances refer to them by name. An
+instance written as a lambda `⟨fun x y => tabulate …⟩` would be eta-expanded by the compiler
+(`FinLex` is erased to its function field), which moves the tabulation under the index binder
+and recomputes it on every read. -/
+
+/-- Pointwise addition. -/
+protected def add [Add α] (x y : FinLex k α) : FinLex k α := tabulate (⇑x + ⇑y)
+/-- Pointwise negation. -/
+protected def neg [Neg α] (x : FinLex k α) : FinLex k α := tabulate (-⇑x)
+/-- Pointwise subtraction. -/
+protected def sub [Sub α] (x y : FinLex k α) : FinLex k α := tabulate (⇑x - ⇑y)
+/-- Pointwise scalar multiplication. -/
+protected def smul {M : Type*} [SMul M α] (c : M) (x : FinLex k α) : FinLex k α :=
+  tabulate (c • ⇑x)
+
 instance [Zero α] : Zero (FinLex k α) := ⟨toFinLex 0⟩
-instance [Add α] : Add (FinLex k α) := ⟨fun x y => toFinLex (⇑x + ⇑y)⟩
-instance [Neg α] : Neg (FinLex k α) := ⟨fun x => toFinLex (-⇑x)⟩
-instance [Sub α] : Sub (FinLex k α) := ⟨fun x y => toFinLex (⇑x - ⇑y)⟩
-instance {M : Type*} [SMul M α] : SMul M (FinLex k α) := ⟨fun c x => toFinLex (c • ⇑x)⟩
+instance [Add α] : Add (FinLex k α) := ⟨FinLex.add⟩
+instance [Neg α] : Neg (FinLex k α) := ⟨FinLex.neg⟩
+instance [Sub α] : Sub (FinLex k α) := ⟨FinLex.sub⟩
+instance {M : Type*} [SMul M α] : SMul M (FinLex k α) := ⟨FinLex.smul⟩
 
 @[simp] theorem coe_zero [Zero α] : ⇑(0 : FinLex k α) = 0 := rfl
 @[simp] theorem coe_add [Add α] (x y : FinLex k α) : ⇑(x + y) = ⇑x + ⇑y := rfl
@@ -316,6 +389,13 @@ instance [AddCommGroup α] : AddCommGroup (FinLex k α) :=
   Function.Injective.addCommGroup _ coe_injective rfl (fun _ _ => rfl) (fun _ => rfl) (fun _ _ => rfl)
     (fun _ _ => rfl) (fun _ _ => rfl)
 
+/-- Evaluation at an index, as an additive monoid hom. -/
+@[simps]
+def evalAddMonoidHom [AddMonoid α] (i : Fin k) : FinLex k α →+ α where
+  toFun x := x i
+  map_zero' := rfl
+  map_add' _ _ := rfl
+
 /-- The lexicographic order is compatible with pointwise addition (via Mathlib's
 `Pi.Lex.isOrderedCancelAddMonoid`). -/
 instance [AddCommMonoid α] [PartialOrder α] [IsOrderedCancelAddMonoid α] :
@@ -331,7 +411,7 @@ instance [AddCommMonoid α] [PartialOrder α] [IsOrderedCancelAddMonoid α] :
 /-! ### Basis vectors -/
 
 /-- The tuple with `a` at index `i` and `0` elsewhere. -/
-def single [Zero α] (i : Fin k) (a : α) : FinLex k α := toFinLex (Pi.single i a)
+def single [Zero α] (i : Fin k) (a : α) : FinLex k α := tabulate (Pi.single i a)
 
 @[simp] theorem coe_single [Zero α] (i : Fin k) (a : α) : ⇑(single i a) = Pi.single i a := rfl
 

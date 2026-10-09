@@ -58,6 +58,19 @@ See `NOTES-M2.md`.
 
 See `NOTES-M3.md`.
 
+**Milestone M4 (done, branch `grokbot/hahn-m4`):** same guarantees.
+
+- `LeviCivita.Approx.Basic`: `Approx Γ R` = a `Poly` known up to `O(ε^prec)`
+  (`prec : WithTop Γ`, `⊤` = exact). `a.Represents x` (agreement with the Hahn series `x` below
+  `prec`) is proved equivalent to `prec ≤ ord (x - val)` and to equality of `HahnSeries.truncLT`.
+  Sound `+ - *` with the p-adic precision rules (`Represents.add`, `Represents.mul`, …), our own
+  `truncLT_mul` (`coeff_mul_eq_of_agree`, `truncLT_mul_of_orderTop`), the certified sign
+  `sign?`/`decidePos?` (`accept | reject | unresolved`, `sign?_sound`), and a certified inverse
+  `inv?` (Newton iteration, precision certified by the residual `1 - x y`; `Represents.inv?`).
+- `LeviCivita.TestM4`: e.g. `(1 + ε + O(ε⁵))⁻¹ = 1 - ε + ε² - ε³ + ε⁴ + O(ε⁵)` by `decide +kernel`.
+
+See `NOTES-M4.md`.
+
 Convention: smaller exponent = larger magnitude (Mathlib's Hahn convention). `ε = ε^1` is a
 positive infinitesimal and `H = ε^(-1)`. See `NOTES-M1.md` for details and what remains.
 
@@ -74,6 +87,11 @@ open Geometry LazySign
 def pts : Fin 3 → Fin 2 → ℤ := ![![0, 0], ![1, 1], ![2, 2]]   -- collinear
 example : (orient2dSoS 4 pts 0 1 2).sign = -1 := by decide   -- definite SoS sign
 example : orient2dLazy 4 pts 0 1 2 = some (-1) := by decide
+
+open Approx
+#eval ((exact (1 + ε : Poly ℤ ℚ)).withPrec 5).inv? 3
+  -- some 1 ε^0 + -1 ε^1 + 1 ε^2 + -1 ε^3 + 1 ε^4 + O(ε^5)
+#eval (ofPoly (ε ^ 2 : Poly ℤ ℚ) 1).decidePos?   -- unresolved
 ```
 
 Build: `lake exe cache get && lake build` (this also builds the tests and the axiom audit).

@@ -6,6 +6,7 @@ import LeviCivita.Util.AssertAxioms
 import LeviCivita.Test
 import LeviCivita.TestM2
 import LeviCivita.TestM3
+import LeviCivita.TestM4
 
 /-!
 # Axiom audit
@@ -106,3 +107,45 @@ open LeviCivita.Geometry LeviCivita.LazySign LeviCivita.TestM3
   lazy_agrees lazy_sound_example lazy_cocircular truncLT_example mulTrunc_example
 
 end M3
+
+/-! ### M4 -/
+
+section M4
+open LeviCivita.Approx LeviCivita.TestM4
+
+-- Hahn-series lemmas: agreement below a precision, our `truncLT_mul`
+#assert_axioms LeviCivita.HahnSeries.agree_iff_le_orderTop
+  LeviCivita.HahnSeries.le_orderTop_add_of_coeff LeviCivita.HahnSeries.coeff_mul_eq_of_agree
+  LeviCivita.HahnSeries.coeff_mul_eq_of_agree_sub LeviCivita.HahnSeries.truncLT_mul_of_orderTop
+  LeviCivita.HahnSeries.orderTop_le_orderTop_truncLT
+
+-- Truncation API
+#assert_axioms Poly.truncTop Poly.truncLT_truncLT Poly.coeff_truncTop Poly.truncTop_truncTop
+  Poly.mulTruncTop Poly.mulTruncTop_eq exact ofPoly withPrec represents_ofPoly
+  Represents.withPrec Represents.mono represents_truncTop_iff
+
+-- `Represents`
+#assert_axioms represents_iff_le_orderTop represents_iff_truncLT represents_iff_truncLT_eq
+  represents_top_iff represents_exact represents_exact_iff Represents.ord_le
+  Represents.orderTop_eq Represents.leadingCoeff_eq Represents.ne_zero
+
+-- Sound arithmetic
+#assert_axioms Approx.add Approx.neg Approx.sub Approx.mul Represents.add Represents.neg
+  Represents.sub represents_mul_val Represents.mul Represents.mul_exact
+
+-- Certified sign
+#assert_axioms sign? sign?_exact sign?_of_certified sign?_eq_none_iff decidePos?
+  decidePos?_exact_ne Represents.leadingCoeff_eq_of_sign? sign?_sound decidePos?_accept
+  decidePos?_reject
+
+-- Inverse
+#assert_axioms newtonInv invPrec invCore inv? orderTop_inv Represents.inv_of_residual
+  Represents.invCore inv?_isSome Represents.inv? exists_inv?_represents
+
+-- M4 tests
+#assert_axioms inv_one_add_eps inv_mul_self_val inv_mul_self_represents inv_b_prec
+  mul_prec_example mul_unknown_order sign_unresolved sign_resolved sign_exact_zero
+  accept_example pos_of_approx inv_pos_example
+
+
+end M4

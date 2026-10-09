@@ -25,6 +25,22 @@ none is proved by hand.
 - `LeviCivita.AxiomAudit`: `#assert_axioms` fails the build if any key declaration depends
   on anything beyond `propext`, `Classical.choice`, `Quot.sound`.
 
+**Milestone M2 (done, branch `grokbot/hahn-m2`):** same guarantees (zero `sorry`, no
+`native_decide`, no custom axioms).
+
+- `LeviCivita.Poly.Algebra`: `Algebra R (Poly Γ R)` (computable `•` and `algebraMap = C`),
+  `toHahnAlg : Poly Γ R →ₐ[R] R⟦Γ⟧`, `toLexHahnHom : Poly Γ R →+*o Lex R⟦Γ⟧`, `toLexHahnEmb`.
+- `LeviCivita.Poly.Std`: computable `coeff`, `leadExp`, `std`, decidable `IsFinite` and
+  `IsInfinitesimal`, each proved equal to its Hahn-series meaning. Also `finiteSubring`,
+  `stdPart : finiteSubring →+* R` (kernel = infinitesimals), and the order characterizations
+  `isFinite_iff_exists_abs_le` and `isInfinitesimal_iff_forall_abs_lt`.
+- `LeviCivita.Poly.Deriv`: the coefficient of `ε^n` in `f (a + ε)` is the `n`-th Hasse derivative
+  of `f` at `a`. The `n = 1` case is ε-AD: `(aeval (C a + ε) f).coeff 1 = f.derivative.eval a`.
+  Computable `dualDeriv`.
+- `LeviCivita.TestM2`: tests, including two independent infinitesimals with `Γ = Lex (Fin 2 → ℤ)`.
+
+See `NOTES-M2.md`.
+
 Convention: smaller exponent = larger magnitude (Mathlib's Hahn convention). `ε = ε^1` is a
 positive infinitesimal and `H = ε^(-1)`. See `NOTES-M1.md` for details and what remains.
 
@@ -34,6 +50,8 @@ open LeviCivita Poly
 
 #eval ((1 : Poly ℤ ℚ) + ε) * (1 - ε)               -- 1 ε^0 + -1 ε^2
 example : (10 : Poly ℤ ℚ) ^ 9 < H := by decide +kernel
+#eval dualDeriv (fun x : Poly ℤ ℚ => x ^ 3 + 2 * x) 2   -- 14
+example : (ε : Poly ℤ ℚ).IsInfinitesimal := by decide +kernel
 ```
 
 Build: `lake exe cache get && lake build` (this also builds the tests and the axiom audit).

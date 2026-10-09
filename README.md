@@ -41,6 +41,23 @@ none is proved by hand.
 
 See `NOTES-M2.md`.
 
+**Milestone M3 (done, branch `grokbot/hahn-m3`):** same guarantees.
+
+- `LeviCivita.Geometry.Predicates`: `orient2d`, `orient3d`, `incircle`, `insphere` as explicit
+  polynomials (one definition runs on `ℤ`, `ℚ`, `Poly`, `Float`), each proved equal to the
+  standard `Matrix.det`. Antisymmetry, translation invariance, naturality along ring homs.
+- `LeviCivita.Geometry.SoS`: Simulation of Simplicity. Coordinate `j` of point `i` becomes
+  `x i j + ε^(b^(j + d i))` in `Poly ℤ R`. For **any** input (collinear, coincident, …) the
+  perturbed predicate is never `0` for distinct point indices (`orient2dSoS_ne_zero`, …,
+  `insphereSoS_ne_zero`), and its sign is the exact sign whenever that is nonzero
+  (`orient2dSoS_sign`, …). `b = 4` serves all four predicates.
+- `LeviCivita.Geometry.LazySign`: `Poly.truncLT`/`mulTrunc` (specs: `HahnSeries.truncLT`), an
+  expression evaluator with truncation, `lazySign_sound`/`lazySign_complete`, and lazy SoS
+  `orient2dLazy`/`incircleLazy`.
+- `bench/Bench.lean`: Float vs exact vs SoS timings (`lake env lean --run bench/Bench.lean`).
+
+See `NOTES-M3.md`.
+
 Convention: smaller exponent = larger magnitude (Mathlib's Hahn convention). `ε = ε^1` is a
 positive infinitesimal and `H = ε^(-1)`. See `NOTES-M1.md` for details and what remains.
 
@@ -52,6 +69,11 @@ open LeviCivita Poly
 example : (10 : Poly ℤ ℚ) ^ 9 < H := by decide +kernel
 #eval dualDeriv (fun x : Poly ℤ ℚ => x ^ 3 + 2 * x) 2   -- 14
 example : (ε : Poly ℤ ℚ).IsInfinitesimal := by decide +kernel
+
+open Geometry LazySign
+def pts : Fin 3 → Fin 2 → ℤ := ![![0, 0], ![1, 1], ![2, 2]]   -- collinear
+example : (orient2dSoS 4 pts 0 1 2).sign = -1 := by decide   -- definite SoS sign
+example : orient2dLazy 4 pts 0 1 2 = some (-1) := by decide
 ```
 
 Build: `lake exe cache get && lake build` (this also builds the tests and the axiom audit).

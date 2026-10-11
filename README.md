@@ -71,6 +71,27 @@ See `NOTES-M3.md`.
 
 See `NOTES-M4.md`.
 
+**Milestone M5 (done, branch `grokbot/hahn-m5-multieps`):** same guarantees.
+
+- `LeviCivita.ForMathlib.Order.FinLex` (imports only Mathlib): `FinLex k α`, `k`-tuples with a
+  **computable** lexicographic `LinearOrder` (`Fin.lexCmp`, structural recursion, so `decide`
+  works in the kernel and the elaborator), pointwise `AddCommGroup`,
+  `IsOrderedCancelAddMonoid`, `Repr`, basis vectors `single`. The transfer to Mathlib is
+  `toLexOrderAddIso : FinLex k α ≃+o Lex (Fin k → α)`. It also contains computable orders on
+  Mathlib's own `Lex (Fin k → α)` / `Lex (∀ i, β i)` (finite `ι`), proved *equal* to
+  `Pi.Lex.linearOrder`.
+- `LeviCivita.Poly.MultiEps`: `MultiEps k := FinLex k ℤ` and the independent infinitesimals
+  `epsI i` (`epsI_lt_epsI : i < j → epsI i < epsI j`). `TestM2`'s two-infinitesimal tests now
+  use `MultiEps 2`, and the test-local instance is gone.
+- `LeviCivita.Geometry.SoSMulti`: SoS with one infinitesimal per coordinate. The key lemma
+  `multiSubst_ne_zero` has **no degree bound**. Nonvanishing for all four predicates, and sign
+  agreement. It is correct but about 100× slower than M3's `b`-power SoS at `n = 100`, because
+  exponents are dense `2n`-vectors.
+- `UPSTREAM.md`: the proposed Mathlib PR (make `Pi.Lex.linearOrder`'s decidability an instance
+  argument, plus a computable `DecidableLT` for finite index types), simulated in `TestM5`.
+
+See `NOTES-M5.md`.
+
 Convention: smaller exponent = larger magnitude (Mathlib's Hahn convention). `ε = ε^1` is a
 positive infinitesimal and `H = ε^(-1)`. See `NOTES-M1.md` for details and what remains.
 

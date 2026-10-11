@@ -14,4 +14,4 @@ require mathlib from git
 @[default_target]
 lean_lib LeviCivita where
   roots := #[`LeviCivita, `LeviCivita.Test, `LeviCivita.TestM2, `LeviCivita.TestM3, `LeviCivita.TestM4,
-    `LeviCivita.AxiomAudit]
+    `LeviCivita.TestM5, `LeviCivita.AxiomAudit]

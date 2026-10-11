@@ -7,6 +7,7 @@ import LeviCivita.Test
 import LeviCivita.TestM2
 import LeviCivita.TestM3
 import LeviCivita.TestM4
+import LeviCivita.TestM5
 
 /-!
 # Axiom audit
@@ -65,9 +66,9 @@ open LeviCivita LeviCivita.Poly LeviCivita.Test LeviCivita.TestM2
   not_isInfinitesimal_one not_isFinite_H isFinite_three_add_eps not_isInfinitesimal_three_add_eps
   isInfinitesimal_eps_sub_eps_sq int_isInfinitesimal_eps int_not_isFinite_H stdPart_three_add_eps
   stdPart_mul_example abs_eps_lt one_sub_eps_bounded ad_example_kernel ad_example_theorem
-  aeval_eq_direct cube_expansion lexLinearOrder eps1_lt_eps2 eps1_pos eps1_mul_eps2_pos
+  aeval_eq_direct cube_expansion eps1_lt_eps2 eps1_pos eps1_mul_eps2_pos
   eps1_mul_eps2_lt_eps1 eps1_lt_eps2_pow eps2_lt_one_thousandth eps1_isInfinitesimal
-  int_eps1_lt_eps2 int_eps1_mul_eps2_pos
+  int_eps1_lt_eps2 int_eps1_mul_eps2_pos eps1_eq_epsI int_eps1_lt_eps2_pow eps1_lt_eps2'
 
 /-! ### M3 -/
 
@@ -149,3 +150,47 @@ open LeviCivita.Approx LeviCivita.TestM4
 
 
 end M4
+
+/-! ### M5 -/
+
+section M5
+
+-- `LeviCivita/ForMathlib/Order/FinLex.lean` (imports only Mathlib; audited here)
+#assert_axioms Fin.lexCmp Fin.lexCmp_eq_eq_iff Fin.lexCmp_eq_lt_iff Fin.lexCmp_swap
+  FinLex.instFunLike FinLex.ext FinLex.equivFun FinLex.instPartialOrder FinLex.lt_iff_toLex_lt
+  FinLex.le_iff_toLex_le FinLex.lt_iff_exists FinLex.le_iff_eq_or_lt FinLex.lexCmp_eq_lt_iff
+  FinLex.lexCmp_eq_eq_iff FinLex.lexCmp_ne_gt_iff FinLex.decidableLE FinLex.decidableLT
+  FinLex.decidableEq FinLex.instLinearOrder FinLex.compare_eq_lexCmp FinLex.toLex_strictMono
+  FinLex.instAddCommGroup FinLex.instIsOrderedCancelAddMonoid FinLex.single FinLex.single_apply
+  FinLex.single_lt_single FinLex.single_pos FinLex.toLexOrderAddIso FinLex.toLexOrderIso
+  Pi.Lex.decidableLTFin Pi.Lex.linearOrderFin Pi.Lex.linearOrderFin_eq Pi.Lex.decidableLTOfFintype
+  Pi.Lex.linearOrderOfFintype Pi.Lex.linearOrderOfFintype_eq
+
+-- compiled-code support (`@[csimp]` lemmas are proofs, so they are audited too)
+#assert_axioms Fin.lexCmpLoop Fin.lexCmpLoop_eq Fin.lexCmpFast Fin.lexCmp_eq_lexCmpFast
+  FinLex.tabulate FinLex.tabulateImpl FinLex.tabulate_eq_tabulateImpl FinLex.evalAddMonoidHom
+  FinLex.single_add FinLex.coe_add FinLex.coe_smul
+
+-- `MultiEps`
+#assert_axioms Poly.epsI Poly.epsI_pos Poly.epsI_lt_epsI Poly.isInfinitesimal_epsI
+
+-- SoS with independent infinitesimals
+section SoSMulti
+open LeviCivita.Geometry LeviCivita.TestM5
+#assert_axioms multiSubst multiExpo prod_single_pow_gen toHahn_multiSubst multiExpo_apply
+  multiExpo_injective multiSubst_ne_zero multiPoint multiSubst_mvPoint
+  orient2dSoSMulti orient3dSoSMulti incircleSoSMulti insphereSoSMulti
+  orient2dSoSMulti_ne_zero orient3dSoSMulti_ne_zero incircleSoSMulti_ne_zero
+  insphereSoSMulti_ne_zero isFinite_multiPoint std_multiPoint orient2dSoSMulti_std
+  orient2dSoSMulti_sign incircleSoSMulti_std incircleSoSMulti_sign orient2dSoSMulti_swap₁₂
+  orient2dSoSMulti_sign_ne_zero
+
+-- M5 tests
+#assert_axioms finLex_lt finLex_le finLex_ne finLex_single_lt finLex_min finLex_transfer
+  multi_collinear multi_collinear_swap multi_coincident multi_generic multi_generic'
+  multi_ne_zero multi_sign_ne_zero multi_cocircular multi_incircle_ne_zero
+  simLinearOrder sim_eps1_lt_eps2 sim_eps1_lt_eps2_pow sim_int_eps1_lt_eps2 sim_lex_lt
+  sim_linearOrder_eq
+end SoSMulti
+
+end M5

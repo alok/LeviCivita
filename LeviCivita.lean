@@ -40,3 +40,6 @@ import LeviCivita.CompactLC
 import LeviCivita.PackedLC
 import LeviCivita.Transcendental
 import LeviCivita.HyperBivector
+import LeviCivita.NSA
+import LeviCivita.Germ
+import LeviCivita.Hyperfinite

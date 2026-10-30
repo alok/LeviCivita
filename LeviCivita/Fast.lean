@@ -166,27 +166,44 @@ instance : ToString LC where
       parts := parts.push (coeff ++ unit)
     String.intercalate " + " parts.toList
 
--- LC-aware trig functions that properly handle infinitesimals
--- sin(a + bε + ...) = sin(a) + bε·cos(a) + higher order terms
--- cos(a + bε + ...) = cos(a) - bε·sin(a) + higher order terms
+/-- Taylor expansion around the standard part: with `a = std x` and the
+infinitesimal remainder `δ = x − a`, returns `Σₖ derivs[k] / k! · δᵏ`, where
+`derivs[k] = f⁽ᵏ⁾(a)`. Each power of `δ` is truncated below `ε^order`
+(`order = derivs.size − 1`), so the result is exact through that order: a
+seed `a + ε` then carries `f(a), f'(a), f''(a)/2, …` as its `ε⁰, ε¹, ε², …`
+coefficients. Valid for finite `x` (no `H` terms). -/
+def taylorAt (derivs : Array Float) (x : LC) : LC := Id.run do
+  let a := std x
+  let delta := x - ofFloat a
+  let minExp := -(derivs.size - 1).toFloat
+  let mut acc : LC := 0
+  let mut pow : LC := 1
+  let mut fact : Float := 1.0
+  for k in [0:derivs.size] do
+    if k > 0 then
+      pow := { terms := (pow * delta).terms.filter (·.exp ≥ minExp) }
+      fact := fact * k.toFloat
+    let c := derivs[k]! / fact
+    acc := acc + { terms := pow.terms.map fun t => ⟨t.exp, c * t.coeff⟩ }
+  return acc
 
+/-- Number of Taylor terms used by the elementary functions: exact through `ε⁴`,
+enough for curvature (second derivatives) with room to spare. -/
+def jetOrder : Nat := 5
+
+/-- Sine, exact through `ε⁴` (see `taylorAt`). -/
 def sin (x : LC) : LC :=
-  let a := std x  -- standard part
-  let sinA := Float.sin a
-  let cosA := Float.cos a
-  -- Get the infinitesimal coefficient (ε^(-1) term)
-  let b := getCoeff x (-1.0)
-  -- sin(a) + b·cos(a)·ε
-  ofFloat sinA + { terms := #[⟨-1.0, b * cosA⟩] }
+  let a := std x
+  let s := Float.sin a
+  let c := Float.cos a
+  taylorAt (Array.ofFn (n := jetOrder) fun k => #[s, c, -s, -c][k.val % 4]!) x
 
+/-- Cosine, exact through `ε⁴` (see `taylorAt`). -/
 def cos (x : LC) : LC :=
-  let a := std x  -- standard part
-  let sinA := Float.sin a
-  let cosA := Float.cos a
-  -- Get the infinitesimal coefficient (ε^(-1) term)
-  let b := getCoeff x (-1.0)
-  -- cos(a) - b·sin(a)·ε
-  ofFloat cosA + { terms := #[⟨-1.0, -b * sinA⟩] }
+  let a := std x
+  let s := Float.sin a
+  let c := Float.cos a
+  taylorAt (Array.ofFn (n := jetOrder) fun k => #[c, -s, -c, s][k.val % 4]!) x
 
 end FastLC
 

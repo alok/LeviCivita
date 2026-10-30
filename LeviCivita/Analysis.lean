@@ -97,4 +97,53 @@ def valueAndGrad {n : Nat} (f : (Fin n → LC) → LC) (x : Fin n → Float) :
 def grad {n : Nat} (f : (Fin n → LC) → LC) (x : Fin n → Float) : Array Float :=
   (valueAndGrad f x).2
 
+/-! ## Elementary functions as exact jets
+
+Each is `taylorAt` with the closed-form derivatives at the standard part, so a
+seed `a + ε` yields `f(a), f'(a), f''(a)/2, …` exactly through `ε⁴`. These are
+what the curvature code (`LeviCivita.Geometry`) needs: Riemann tensors are
+second derivatives of the metric. -/
+
+/-- `exp`, exact through `ε⁴`. -/
+def exp (x : LC) : LC :=
+  let e := Float.exp (std x)
+  taylorAt (Array.replicate jetOrder e) x
+
+/-- Natural log of a positive finite element, exact through `ε⁴`:
+`log⁽ᵏ⁾(a) = (−1)^(k−1) (k−1)! / aᵏ`. -/
+def log (x : LC) : LC :=
+  let a := std x
+  taylorAt (Array.ofFn (n := jetOrder) fun k =>
+    if k.val == 0 then Float.log a
+    else
+      let m := k.val - 1
+      let fact := (List.range m).foldl (fun acc i => acc * (i + 1).toFloat) 1.0
+      (if m % 2 == 0 then 1.0 else -1.0) * fact / Float.pow a k.val.toFloat) x
+
+/-- `sinh`, exact through `ε⁴`. -/
+def sinh (x : LC) : LC :=
+  let a := std x
+  taylorAt (Array.ofFn (n := jetOrder) fun k =>
+    if k.val % 2 == 0 then Float.sinh a else Float.cosh a) x
+
+/-- `cosh`, exact through `ε⁴`. -/
+def cosh (x : LC) : LC :=
+  let a := std x
+  taylorAt (Array.ofFn (n := jetOrder) fun k =>
+    if k.val % 2 == 0 then Float.cosh a else Float.sinh a) x
+
+/-- `tan = sin / cos`. -/
+def tan (x : LC) : LC := sin x / cos x
+
+/-- Real power `x^p` of a positive finite element:
+`d^k/da^k a^p = p (p−1) ⋯ (p−k+1) a^(p−k)`. -/
+def rpow (x : LC) (p : Float) : LC :=
+  let a := std x
+  taylorAt (Array.ofFn (n := jetOrder) fun k =>
+    let falling := (List.range k.val).foldl (fun acc i => acc * (p - i.toFloat)) 1.0
+    falling * Float.pow a (p - k.val.toFloat)) x
+
+/-- Coefficient of `εᵏ` (exponent `−k`). -/
+@[inline] def epsCoeff (x : LC) (k : Nat) : Float := getCoeff x (-k.toFloat)
+
 end LeviCivita.Fast.FastLC

@@ -91,7 +91,8 @@ def mseLossGrad (y : FastLC.LC) (target : Float) : FastLC.LC :=
   let mut neuron : Neuron := { w1 := 0.5, w2 := 0.5, b := -0.2 }
 
   -- Training data for AND gate
-  let data := #[(0.0, 0.0, 0.0), (0.0, 1.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 1.0)]
+  let data : Array (Float × Float × Float) :=
+    #[(0.0, 0.0, 0.0), (0.0, 1.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 1.0)]
 
   IO.println "Initial weights:"
   IO.println s!"  w1={neuron.w1}, w2={neuron.w2}, b={neuron.b}"

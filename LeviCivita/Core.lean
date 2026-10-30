@@ -1969,7 +1969,7 @@ private theorem foldl_one_mulByTerm_wf (ts : Array Term)
   -- Show the two functions are equal on array elements
   have hfuncs : ∀ acc, ∀ t, t ∈ ts.toList → add acc (mulByTerm one t) = add acc ⟨#[t]⟩ := by
     intro acc t ht
-    have ht_idx := Array.mem_iff_getElem.mp (Array.mem_toList.mp ht)
+    have ht_idx := Array.mem_iff_getElem.mp (Array.mem_toList_iff.mp ht)
     obtain ⟨i, hi, heq_t⟩ := ht_idx
     have hcoeff : t.coeff ≠ 0 := by rw [← heq_t]; exact hwf i hi
     rw [one_mulByTerm t hcoeff]
@@ -2083,7 +2083,7 @@ theorem one_mul'_wf (x : LC) (hwf : x.WF) (hsorted : Sorted x.terms) : mul' one 
             rw [Array.getElem?_eq_none]
             omega
           rw [hcontra] at hx
-          exact Option.noConfusion hx
+          cases hx
         | succ n => exact Nat.zero_lt_succ n
       -- hwf 0 hlt gives x.terms[0].coeff ≠ 0, need to connect x.terms[0] = t
       have hwf0 : x.terms[0].coeff ≠ 0 := hwf 0 hlt

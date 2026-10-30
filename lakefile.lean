@@ -18,3 +18,7 @@ lean_exe lcbench where
 
 lean_exe nativebench where
   root := `LeviCivita.NativeBench
+
+@[test_driver]
+lean_exe tests where
+  root := `tests.Main

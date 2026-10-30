@@ -40,3 +40,4 @@ import LeviCivita.CompactLC
 import LeviCivita.PackedLC
 import LeviCivita.Transcendental
 import LeviCivita.HyperBivector
+import LeviCivita.Geometry

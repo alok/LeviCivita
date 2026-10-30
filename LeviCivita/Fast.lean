@@ -166,13 +166,19 @@ instance : ToString LC where
       parts := parts.push (coeff ++ unit)
     String.intercalate " + " parts.toList
 
+/-- The value of a function outside its domain (e.g. `exp H`, `log ε`): a single
+NaN standard part, which `st?` reports as `none`. -/
+def undefined : LC := { terms := #[⟨0.0, 0.0 / 0.0⟩] }
+
 /-- Taylor expansion around the standard part: with `a = std x` and the
 infinitesimal remainder `δ = x − a`, returns `Σₖ derivs[k] / k! · δᵏ`, where
 `derivs[k] = f⁽ᵏ⁾(a)`. Each power of `δ` is truncated below `ε^order`
 (`order = derivs.size − 1`), so the result is exact through that order: a
 seed `a + ε` then carries `f(a), f'(a), f''(a)/2, …` as its `ε⁰, ε¹, ε², …`
-coefficients. Valid for finite `x` (no `H` terms). -/
+coefficients. Only finite `x` have a Taylor germ: for an infinite `x` (any
+`H` term) the result is `undefined`. -/
 def taylorAt (derivs : Array Float) (x : LC) : LC := Id.run do
+  if x.terms.any (·.exp > 0.0) then return undefined
   let a := std x
   let delta := x - ofFloat a
   let minExp := -(derivs.size - 1).toFloat

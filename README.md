@@ -52,14 +52,58 @@ Everything builds on Lean `v4.35.0-rc3` (`lake build`, `lake test`).
 
 Native compilation achieves **~1 billion ops/sec** for basic operations.
 
-## Analysis: order, roots and exact jets (`LeviCivita.Analysis`)
+## The field, analysis and nonstandard analysis
 
-`FastLC` is an ordered field: `x < y` compares the leading term of `y − x`. On top of
-that: `abs`, `max`, `min` (at a tie in the standard part they pick the larger
-infinitesimal part, so a seed `x + εv` yields a one-sided directional derivative),
-`sqrt` by the binomial series, `grad`/`valueAndGrad`, and **exact Taylor jets** of
-`sin`, `cos`, `exp`, `log`, `sinh`, `cosh`, `tan` and real powers: `f(a + ε)` carries
-`f(a), f'(a), f''(a)/2, …` exactly through `ε⁴`, via `taylorAt`.
+Four modules on top of `Fast` (all exercised by `lake test`, 58 checks against
+closed forms). `docs/NSA.md` is a guided tour.
+
+### `LeviCivita.Analysis`: the ordered field
+
+* Order: `x < y` compares the leading term of `y − x`; `signum`, `abs`, `max`, `min`
+  (`max (1 + ε) (1 + 2ε) = 1 + 2ε`), and the valuation `valuation?` (`ν(ε) = 1`, `ν(H) = −1`).
+* Division and roots with adaptive precision: `x = l (1 + δ)` splits off the leading
+  monomial, and `invertTo`/`div?`, `rpow` (any real power of a positive element, finite
+  or infinite), `sqrt`, `root n` (odd roots of negatives too) sum a series in `δ`
+  until it passes a requested valuation. `(H + 1)^{1/3} = H^{1/3} + ⅓H^{−2/3} − …`,
+  `∛(−ε) = −ε^{1/3}`.
+* Exact Taylor germs of `sin`, `cos`, `exp`, `log`, `sinh`, `cosh`, `tan`: `f(a + ε)`
+  carries `f(a), f'(a), f''(a)/2, …` through `ε⁴`. Outside the domain (`exp H`, `log ε`)
+  the result is `undefined`.
+* `grad`/`valueAndGrad`: the whole gradient in **one** evaluation, coordinate `i`
+  seeded at its own scale `ε^{1+i/n}`. At creases of `max`/`min`/`abs` this is a
+  lexicographic derivative (one smooth piece), not a mix of one-sided partials.
+
+### `LeviCivita.NSA`: standard part and transfer
+
+* `isInfinitesimal`, `isFinite`, `isInfinite`, `isStandard`, `st?` (standard part,
+  `none` for infinite), `infinitelyClose`.
+* `RealLike`: write a function once; at `Float` it is `f`, at `LC` its natural
+  extension `*f`. `Ext` wraps one and computes the nonstandard definitions:
+
+```lean
+import LeviCivita.NSA
+open LeviCivita
+
+def sinc : Ext := ⟨fun x => RealLike.sin x / x⟩
+#eval sinc.limit? 0                                   -- some 1.0   (st (sin ε / ε))
+def r : Ext := ⟨fun x => (RealLike.ofFloat 3 * x * x + RealLike.ofFloat 1) / (x * x - RealLike.ofFloat 5)⟩
+#eval r.limitAtInfinity?                              -- some 3.0   (st *r(H))
+def a : Ext := ⟨fun x => RealLike.abs x⟩
+#eval a.deriv? 0                                      -- none: quotients ±1 at δ = ±ε
+```
+
+### `LeviCivita.Germ`: fast exact gradients
+
+`Germ` is a finite element modulo valuation `≥ 2`, a ring quotient, so truncating
+after every operation is exact for first derivatives. `Germ.grad` stays `n + 1`
+terms long; RayTrace4D computes every surface normal with it.
+
+### `LeviCivita.Hyperfinite`: integrals as hyperfinite sums
+
+For a polynomial, the Riemann sum with `N` steps has a closed form in `N`
+(Faulhaber), so it can be evaluated at `N = H`. The standard part is the integral.
+The infinitesimal tail is the rule's exact error: for the left rule `−(b−a)(f(b)−f(a))/2 · ε`,
+and for the midpoint rule `−(b−a)²(f'(b)−f'(a))/24 · ε²`.
 
 ## License
 

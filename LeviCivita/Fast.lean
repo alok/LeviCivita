@@ -187,8 +187,7 @@ def taylorAt (derivs : Array Float) (x : LC) : LC := Id.run do
     acc := acc + { terms := pow.terms.map fun t => ⟨t.exp, c * t.coeff⟩ }
   return acc
 
-/-- Number of Taylor terms used by the elementary functions: exact through `ε⁴`,
-enough for curvature (second derivatives) with room to spare. -/
+/-- Number of Taylor terms used by the elementary functions: exact through `ε⁴`. -/
 def jetOrder : Nat := 5
 
 /-- Sine, exact through `ε⁴` (see `taylorAt`). -/

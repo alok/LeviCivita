@@ -100,9 +100,7 @@ def grad {n : Nat} (f : (Fin n → LC) → LC) (x : Fin n → Float) : Array Flo
 /-! ## Elementary functions as exact jets
 
 Each is `taylorAt` with the closed-form derivatives at the standard part, so a
-seed `a + ε` yields `f(a), f'(a), f''(a)/2, …` exactly through `ε⁴`. These are
-what the curvature code (`LeviCivita.Geometry`) needs: Riemann tensors are
-second derivatives of the metric. -/
+seed `a + ε` yields `f(a), f'(a), f''(a)/2, …` exactly through `ε⁴`. -/
 
 /-- `exp`, exact through `ε⁴`. -/
 def exp (x : LC) : LC :=

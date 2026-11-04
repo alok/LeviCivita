@@ -39,6 +39,7 @@ import LeviCivita.Completion
 import LeviCivita.Poly
 import LeviCivita.Limits
 import LeviCivita.Real
+import LeviCivita.RCF
 import LeviCivita.Field
 import LeviCivita.Fast
 import LeviCivita.Analysis

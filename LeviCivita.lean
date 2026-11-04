@@ -43,6 +43,7 @@ import LeviCivita.RCF
 import LeviCivita.Hensel
 import LeviCivita.Newton
 import LeviCivita.RealClosed
+import LeviCivita.LCReal
 import LeviCivita.Field
 import LeviCivita.Fast
 import LeviCivita.Analysis

@@ -759,7 +759,7 @@ theorem ofL_lt {x y : Laurent K} : ofL x < ofL y ↔ x < y := by
   constructor <;> intro h <;> grind
 
 /-- `x ↦ x(ε^{1/N})` is a ring map. -/
-private theorem mk_mul_same (N : Nat) (hN : 0 < N) (x y : Laurent K) :
+theorem mk_mul_same (N : Nat) (hN : 0 < N) (x y : Laurent K) :
     mk N hN (x * y) = mk N hN x * mk N hN y := by rw [mk_mul]; pnorm
 
 theorem mk_pow (N : Nat) (hN : 0 < N) (x : Laurent K) (n : Nat) :
@@ -808,6 +808,54 @@ theorem root_lt_ofK (N : Nat) (hN : 0 < N) {q : K} (hq : 0 < q) : root N hN < of
   grind
 
 theorem eps_pos : 0 < (eps : Puiseux K) := ofL_lt.mpr Laurent.eps_pos
+
+/-! ### `x ↦ x(ε^{1/N})` is an ordered field embedding -/
+
+theorem mk_add_same (N : Nat) (hN : 0 < N) (x y : Laurent K) :
+    mk N hN (x + y) = mk N hN x + mk N hN y := by rw [mk_add]; pnorm
+
+theorem mk_one' (N : Nat) (hN : 0 < N) : mk N hN (1 : Laurent K) = 1 := by rw [one_def]; pnorm
+
+theorem mk_zero' (N : Nat) (hN : 0 < N) : mk N hN (0 : Laurent K) = 0 := by rw [zero_def]; pnorm
+
+theorem mk_ofK (N : Nat) (hN : 0 < N) (q : K) : mk N hN (Laurent.ofK q) = ofK q := by
+  unfold ofK ofL; rw [mk_eq, subL_one_id]; unfold Laurent.ofK; rw [subL_ofRing N hN, sub_C hN]
+
+theorem mk_lt {N : Nat} {hN : 0 < N} {x y : Laurent K} : mk N hN x < mk N hN y ↔ x < y := by
+  rw [lt_def]
+  have : mk N hN y - mk N hN x = mk N hN (y - x) := by
+    show mk N hN y + -mk N hN x = mk N hN (y + -x); rw [mk_neg, ← mk_add_same]
+  rw [this, isPos_mk]
+  constructor <;> intro h <;> grind
+
+theorem ofK_add (a b : K) : ofK (a + b) = ofK a + ofK b := by
+  unfold ofK Laurent.ofK; rw [C_add, ofRing_add, ofL_add]
+
+theorem ofK_one : ofK (1 : K) = 1 := rfl
+
+theorem ofK_lt {a b : K} (h : a < b) : ofK a < ofK b := by
+  unfold ofK Laurent.ofK; apply ofL_lt.mpr; apply ofRing_lt.mpr
+  rw [PS.lt_def]
+  refine ⟨0, fun m hm => absurd hm (Nat.not_lt_zero _), ?_⟩
+  show 0 < (C b).coeff 0 + -(C a).coeff 0
+  simp only [C, if_pos]; grind
+
+/-- `(ε^{1/(NM)})^M = ε^{1/N}`. -/
+theorem root_mul_pow (N M : Nat) (hN : 0 < N) (hM : 0 < M) :
+    (root (N * M) (Nat.mul_pos hN hM) : Puiseux K) ^ M = root N hN := by
+  unfold root
+  rw [← mk_pow, mk_eq]
+  unfold Laurent.eps
+  rw [ofRing_pow, subL_ofRing N hN, subL_ofRing (N * M) (Nat.mul_pos hN hM), sub_X (Nat.mul_pos hN hM)]
+  congr 1
+  have h1 : ∀ k : Nat, sub N ((X : PS K) ^ k) = (X : PS K) ^ (N * k) := by
+    intro k
+    induction k with
+    | zero => rw [Nat.mul_zero]; exact sub_one hN
+    | succ k ih =>
+      show sub N ((X : PS K) ^ k * X) = (X : PS K) ^ (N * k + N)
+      rw [sub_mul hN, ih, sub_X hN, Semiring.pow_add]
+  rw [h1]
 
 /-- `grind` reasons in the Puiseux field. -/
 example (x : Puiseux K) (hx : x ≠ 0) : x * x⁻¹ = 1 := by grind

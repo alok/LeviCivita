@@ -18,8 +18,8 @@ Levi-Civita field over `K`: series `Σ aᵢ ε^{qᵢ}` with left-finite rational
 support, unbounded denominators allowed.
 
 The Levi-Civita field is real closed only when its coefficient field is. With
-rational coefficients it is not: `x² = 2` has no solution. Real-closedness
-would need real (or real-algebraic) coefficients.
+rational coefficients it is not: `x² = 2` has no solution. Over `ℝ = Completion ℚ`
+it is: see `LeviCivitaFieldOver.real_isRealClosed` in `LeviCivita.LCReal`.
 -/
 
 namespace LeviCivita.Cauchy

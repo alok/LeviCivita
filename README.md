@@ -166,10 +166,36 @@ constants). `NullSeq.puiseux_hasNullSeq` shows `εᵏ` is such a sequence in the
 Puiseux field (every positive Puiseux series exceeds some `εᵏ`), so
 `LeviCivitaField.complete` holds outright.
 
-With rational coefficients the field is **not** real closed (`x² = 2` has no
-solution), so there is no real-closedness theorem here; that needs real
-coefficients. `Fast` and the analysis modules compute in the field with
-explicit truncation.
+**Real-closedness.** With rational coefficients the field is **not** real closed
+(`x² = 2` has no solution). Over the reals it is, and this is proved, with only the
+standard axioms:
+
+```lean
+import LeviCivita.LCReal
+open LeviCivita
+
+-- every positive element is a square, every odd-degree polynomial has a root
+#check (LeviCivitaFieldOver.real_isRealClosed : IsRealClosed (LeviCivitaFieldOver Real))
+```
+
+The series code is generic over the coefficient field, so `Real := Completion ℚ`
+plugs in. The proof:
+
+| Module | Content |
+|---|---|
+| `Poly` | polynomials as degree-bounded `PS`, Taylor shift `tay`, derivatives, identity theorem |
+| `Limits`, `Real` | sequence limits; `Real.ivt`: the polynomial IVT over `Completion ℚ`, by bisection |
+| `RCF` | over an IVT field, odd-degree polynomials have a root of odd multiplicity |
+| `Hensel` | `LCData R L`: embedding `ι`, powers `ε^q`, leading terms `ι r · ε^q · (1 + δ)`, completeness; standard part `st` |
+| `Newton` | Hensel's lemma: a simple root of the residue polynomial lifts, by Newton iteration (`K·|H(wₖ)| ≤ ε^{μ(k+1)}`) |
+| `RealClosed` | descent on the odd multiplicity: Hensel on `P⁽ᵐ⁻¹⁾`, re-expand, rescale by the Newton-polygon slope; square roots; `LCData.isRealClosed` |
+| `LCReal` | `LCData K (LeviCivitaFieldOver K)` for any ordered `K`: leading terms of Laurent, Puiseux and completed series; `ε^{a/N} = (ε^{1/N})^a` |
+
+`LeviCivitaFieldOver.isRealClosed` is the general form: the Levi-Civita field over
+any ordered field with the polynomial IVT (that is, any real-closed field) is real
+closed.
+
+`Fast` and the analysis modules compute in the field with explicit truncation.
 
 The proofs reduce every law to an identity of finite sums: addition is additive
 in the weighted sum `Σ coeff · g(exp)`, multiplication is a convolution, and the

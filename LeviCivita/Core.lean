@@ -389,11 +389,8 @@ def mul' (x y : LC) : LC :=
     This is true by the structure of forIn, but proving it requires
     understanding Array.forIn's implementation. -/
 theorem mul_eq_mul' (x y : LC) : mul x y = mul' x y := by
-  -- Both functions are structurally the same:
-  -- - Check if x or y is zero, return zero
-  -- - Otherwise, iterate over y.terms, accumulating add acc (mulByTerm x t)
-  -- The difference is forIn (do-notation) vs foldl, which are equivalent in Id monad.
-  sorry  -- Needs structural proof of forIn = foldl for Array in Id monad
+  unfold mul mul'
+  split <;> simp_all [Array.idRun_forIn_yield_eq_foldl] <;> rfl
 
 /-- Helper: foldl on singleton array equals single function application. -/
 theorem foldl_singleton {α β : Type _} (f : β → α → β) (init : β) (a : α) :
@@ -731,9 +728,10 @@ instance : ToString LC where
 
 /-! ## Algebraic Properties
 
-Note: The loop-based merge implementation makes formal verification complex.
-Properties with sorry are computationally verified but formal proofs would need
-either tail-recursive rewrites or reflection.
+Everything in this section is proved, with no `sorry`. The ring laws need
+normalized inputs (`FullWF`) and are stated that way (`add_assoc_wf`,
+`mul_assoc_wf`, …); the commutative-ring instance lives on the subtype `NLC` of
+normalized values, at the end of the file.
 
 **Using mvcgen for Loop Proofs**
 
@@ -1213,17 +1211,6 @@ private theorem mergeSortedAux_empty_right_wf (xs : Array Term) (i : Nat) (acc :
   have h := mergeSortedAux_empty_left_wf x.terms 0 #[] hwf
   simp only [Array.extract_eq_self_of_le (Nat.le_refl _), Array.empty_append] at h
   exact eq_of_terms_eq h
-
--- Legacy theorems (unconditional - may not hold for malformed LC values)
--- Verified computationally: #eval add (ofCoeff 5) zero == ofCoeff 5
-@[grind] theorem add_zero (x : LC) : add x zero = x := by
-  -- Holds unconditionally since zero coefficients get filtered during merge
-  unfold add zero mergeSorted
-  sorry  -- Would need to track filtering behavior
-
-@[grind] theorem zero_add (x : LC) : add zero x = x := by
-  unfold add zero mergeSorted
-  sorry  -- Would need to track filtering behavior
 
 -- Negation inverts sign
 @[grind] theorem neg_neg (x : LC) : neg (neg x) = x := by
@@ -1917,30 +1904,6 @@ private theorem mergeSorted_assoc (xs ys zs : Array Term)
   simp only [add]
   exact congrArg LC.mk (mergeSorted_comm x.terms y.terms)
 
-/-- Multiplication via foldl (equivalent to `mul` in `Id` monad). -/
-theorem mul'_one (x : LC) : mul' x one = x := by
-  unfold mul' one isZero
-  by_cases hx : x.terms.isEmpty
-  · -- x.terms is empty (x = zero case)
-    simp only [hx, Bool.true_or, ↓reduceIte, zero]
-    have hterms : x.terms = #[] := Array.isEmpty_iff.mp hx
-    cases x with | mk ts =>
-    simp only at hterms
-    simp only [hterms]
-  · -- x.terms is not empty
-    simp only [hx, Bool.false_or]
-    split
-    · next h =>
-      -- h : #[⟨0, 1⟩].isEmpty = true → contradiction
-      simp only [Array.isEmpty_iff] at h
-      have : (#[⟨0, 1⟩] : Array Term).size = (#[] : Array Term).size := by rw [h]
-      simp at this
-    · next _ =>
-      rw [foldl_singleton]
-      simp only [mulByTerm_one]
-      -- Goal: add zero x = x, which is zero_add
-      exact zero_add x
-
 -- Helper: List.foldl is equal when functions agree on list elements
 private theorem list_foldl_congr' {α β : Type _} (f g : β → α → β) (init : β) (xs : List α)
     (h : ∀ b, ∀ a ∈ xs, f b a = g b a) :
@@ -1989,7 +1952,7 @@ theorem one_mul'_wf (x : LC) (hwf : x.WF) (hsorted : Sorted x.terms) : mul' one 
     simp only [h]
   · -- x ≠ zero case
     simp only [hx, Bool.or_false]
-    have hone : (#[⟨0, 1⟩] : Array Term).isEmpty = false := by native_decide
+    have hone : (#[⟨0, 1⟩] : Array Term).isEmpty = false := rfl
     simp only [hone, ↓reduceIte]
     -- Convert Sorted to the pairwise comparison form
     have hsorted' : ∀ i j (hi : i < x.terms.size) (hj : j < x.terms.size),
@@ -2000,48 +1963,6 @@ theorem one_mul'_wf (x : LC) (hwf : x.WF) (hsorted : Sorted x.terms) : mul' one 
 
 -- Multiplication identity
 -- Verified: #eval mul (add one epsilon) one == add one epsilon  -- true
-@[grind] theorem mul_one (x : LC) : mul x one = x := by
-  unfold mul one isZero
-  by_cases hx : x.terms.isEmpty
-  · -- x = zero case
-    simp only [hx, Bool.true_or, ↓reduceIte, Id.run, pure]
-    have h : x.terms = #[] := Array.isEmpty_iff.mp hx
-    cases x with | mk ts =>
-    simp only at h
-    simp only [h, zero]
-  · -- x ≠ zero case
-    simp only [hx, Bool.false_or]
-    have hone : (#[⟨0, 1⟩] : Array Term).isEmpty = false := by native_decide
-    simp only [hone]
-    -- forIn on singleton in Id monad is definitionally just applying body once
-    show Id.run (do
-      let r ← forIn #[{ exp := 0, coeff := 1 }] zero fun t r ↦ do
-        pure PUnit.unit
-        pure (ForInStep.yield (r.add (x.mulByTerm t)))
-      r) = x
-    -- Simplifies to: add zero (mulByTerm x ⟨0, 1⟩) = x
-    show add zero (mulByTerm x ⟨0, 1⟩) = x
-    simp only [mulByTerm_one, zero_add]
-
--- Verified: #eval mul one (add one epsilon) == add one epsilon  -- true
-@[grind] theorem one_mul (x : LC) : mul one x = x := by
-  unfold mul one isZero
-  by_cases hx : x.terms.isEmpty
-  · -- x.terms is empty (x = zero case)
-    simp only [hx, Bool.or_true, Id.run, pure]
-    have hterms : x.terms = #[] := Array.isEmpty_iff.mp hx
-    cases x with | mk ts =>
-    simp only at hterms
-    simp only [hterms, zero, ↓reduceIte]
-  · -- x.terms is not empty - the loop iterates
-    simp only [hx, Bool.or_false]
-    have hone : (#[⟨0, 1⟩] : Array Term).isEmpty = false := by native_decide
-    simp only [hone]
-    -- The loop: for t in x.terms, result := add result (mulByTerm one t)
-    -- mulByTerm one t = ⟨#[⟨0 + t.exp, 1 * t.coeff⟩]⟩ = ⟨#[t]⟩
-    -- So we're just adding each term of x to the result
-    sorry  -- Needs induction on forIn loop
-
 -- Zero annihilates
 @[grind] theorem mul_zero (x : LC) : mul x zero = zero := by
   simp [mul, zero, isZero]
@@ -2109,6 +2030,348 @@ theorem one_mul'_wf (x : LC) (hwf : x.WF) (hsorted : Sorted x.terms) : mul' one 
       simp only [hp, ↓reduceIte]
       decide
 
+/-! ### Ring laws for normalized values
+
+The ring laws hold for *normalized* values, `FullWF x` (sorted, strictly
+decreasing exponents, no zero coefficient), which every operation produces from
+normalized inputs. They fail for arbitrary arrays: `⟨#[⟨0, 0⟩]⟩ + 0` is `⟨#[]⟩`.
+The proofs go through one functional: the weighted sum
+
+  `wsum xs g = Σ_{t ∈ xs} t.coeff · g t.exp`.
+
+Addition is additive in it, `mulByTerm` shifts `g`, and so multiplication is a
+double sum (a convolution). Testing against every indicator `g = [· = e]` recovers
+the coefficient at `e`, which determines a normalized value (`eq_of_coeffAtExp_eq`),
+so each ring law reduces to an identity of finite sums of rationals. -/
+
+/-- `Σ_{t ∈ xs} t.coeff · g t.exp`. -/
+private def wsum (xs : List Term) (g : Exp → Coeff) : Coeff := (xs.map fun t => t.coeff * g t.exp).sum
+
+private theorem wsum_nil (g : Exp → Coeff) : wsum [] g = 0 := rfl
+
+private theorem wsum_cons (t : Term) (xs : List Term) (g : Exp → Coeff) :
+    wsum (t :: xs) g = t.coeff * g t.exp + wsum xs g := by
+  simp [wsum]
+
+private theorem wsum_append (xs ys : List Term) (g : Exp → Coeff) :
+    wsum (xs ++ ys) g = wsum xs g + wsum ys g := by
+  simp [wsum, List.sum_append]
+
+/-- `wsum` is linear in the weight function. -/
+private theorem wsum_lin (xs : List Term) (a : Coeff) (g h : Exp → Coeff) :
+    wsum xs (fun e => a * g e + h e) = a * wsum xs g + wsum xs h := by
+  induction xs with
+  | nil => simp only [wsum_nil]; grind
+  | cons t xs ih => simp only [wsum_cons, ih]; grind
+
+private theorem wsum_zero_fn (xs : List Term) : wsum xs (fun _ => 0) = 0 := by
+  induction xs with
+  | nil => rfl
+  | cons t xs ih => rw [wsum_cons, ih]; grind
+
+private theorem wsum_smul (xs : List Term) (a : Coeff) (g : Exp → Coeff) :
+    wsum xs (fun e => a * g e) = a * wsum xs g := by
+  have := wsum_lin xs a g (fun _ => 0)
+  rw [wsum_zero_fn] at this
+  have h : (fun e => a * g e + 0) = (fun e => a * g e) := funext fun e => Rat.add_zero _
+  rw [h, Rat.add_zero] at this
+  exact this
+
+private theorem wsum_congr (xs : List Term) (g h : Exp → Coeff) (hgh : ∀ e, g e = h e) :
+    wsum xs g = wsum xs h := by
+  have : g = h := funext hgh
+  rw [this]
+
+/-- Double sums can be swapped. -/
+private theorem wsum_swap (xs ys : List Term) (f : Exp → Exp → Coeff) :
+    wsum ys (fun ey => wsum xs (fun ex => f ex ey)) = wsum xs (fun ex => wsum ys (fun ey => f ex ey)) := by
+  induction ys with
+  | nil => simp [wsum_nil, wsum_zero_fn]
+  | cons t ys ih =>
+    rw [wsum_cons, ih]
+    have := wsum_lin xs t.coeff (fun ex => f ex t.exp) (fun ex => wsum ys (fun ey => f ex ey))
+    rw [← this]
+    apply wsum_congr; intro e; rw [wsum_cons]
+
+private theorem wsum_drop_cons (xs : Array Term) (i : Nat) (hi : i < xs.size) (g : Exp → Coeff) :
+    wsum (xs.toList.drop i) g = xs[i].coeff * g xs[i].exp + wsum (xs.toList.drop (i + 1)) g := by
+  rw [List.drop_eq_getElem_cons (by simpa using hi)]
+  simp [wsum_cons]
+
+private theorem wsum_drop_end (xs : Array Term) (i : Nat) (hi : ¬ i < xs.size) (g : Exp → Coeff) :
+    wsum (xs.toList.drop i) g = 0 := by
+  rw [List.drop_of_length_le (by simp; omega)]; rfl
+
+private theorem coeff_zero_of_not_bne {c : Coeff} (h : ¬ (c != 0) = true) : c = 0 := by
+  simpa using h
+
+/-- Merging is additive in `wsum`, for any arrays (a dropped term has coefficient
+`0`, and equal exponents combine as `(c + c') g e = c g e + c' g e`). -/
+private theorem wsum_mergeSortedAux (xs ys : Array Term) (i j : Nat) (acc : Array Term) (g : Exp → Coeff) :
+    wsum (mergeSortedAux xs ys i j acc).toList g =
+      wsum acc.toList g + wsum (xs.toList.drop i) g + wsum (ys.toList.drop j) g := by
+  induction hsteps : (xs.size - i) + (ys.size - j) using Nat.strongRecOn generalizing i j acc with
+  | ind steps ih =>
+    unfold mergeSortedAux
+    by_cases hi : i < xs.size <;> by_cases hj : j < ys.size <;> simp only [hi, hj, ↓reduceDIte]
+    · rw [wsum_drop_cons xs i hi, wsum_drop_cons ys j hj]
+      by_cases hgt : xs[i].exp > ys[j].exp
+      · simp only [hgt, ↓reduceIte]
+        rw [ih _ (by omega) (i + 1) j _ rfl, wsum_drop_cons ys j hj]
+        by_cases hc : (xs[i].coeff != 0) = true
+        · simp only [hc, ↓reduceIte, Array.toList_push, wsum_append, wsum_cons, wsum_nil]; grind
+        · simp only [hc, Bool.false_eq_true, ↓reduceIte, coeff_zero_of_not_bne hc]; grind
+      · simp only [hgt, ↓reduceIte]
+        by_cases hlt : xs[i].exp < ys[j].exp
+        · simp only [hlt, ↓reduceIte]
+          rw [ih _ (by omega) i (j + 1) _ rfl, wsum_drop_cons xs i hi]
+          by_cases hc : (ys[j].coeff != 0) = true
+          · simp only [hc, ↓reduceIte, Array.toList_push, wsum_append, wsum_cons, wsum_nil]; grind
+          · simp only [hc, Bool.false_eq_true, ↓reduceIte, coeff_zero_of_not_bne hc]; grind
+        · simp only [hlt, ↓reduceIte]
+          have heq : xs[i].exp = ys[j].exp :=
+            Rat.le_antisymm (Rat.not_lt.mp hgt) (Rat.not_lt.mp hlt)
+          rw [ih _ (by omega) (i + 1) (j + 1) _ rfl]
+          by_cases hc : (xs[i].coeff + ys[j].coeff != 0) = true
+          · simp only [hc, ↓reduceIte, Array.toList_push, wsum_append, wsum_cons, wsum_nil, heq]; grind
+          · simp only [hc, Bool.false_eq_true, ↓reduceIte]
+            have h0 := coeff_zero_of_not_bne hc
+            rw [heq]
+            have : xs[i].coeff * g ys[j].exp + ys[j].coeff * g ys[j].exp = 0 := by
+              rw [← Rat.add_mul, h0, Rat.zero_mul]
+            grind
+    · rw [wsum_drop_cons xs i hi, wsum_drop_end ys j hj]
+      rw [ih _ (by omega) (i + 1) j _ rfl, wsum_drop_end ys j hj]
+      by_cases hc : (xs[i].coeff != 0) = true
+      · simp only [hc, ↓reduceIte, Array.toList_push, wsum_append, wsum_cons, wsum_nil]; grind
+      · simp only [hc, Bool.false_eq_true, ↓reduceIte, coeff_zero_of_not_bne hc]; grind
+    · rw [wsum_drop_cons ys j hj, wsum_drop_end xs i hi]
+      rw [ih _ (by omega) i (j + 1) _ rfl, wsum_drop_end xs i hi]
+      by_cases hc : (ys[j].coeff != 0) = true
+      · simp only [hc, ↓reduceIte, Array.toList_push, wsum_append, wsum_cons, wsum_nil]; grind
+      · simp only [hc, Bool.false_eq_true, ↓reduceIte, coeff_zero_of_not_bne hc]; grind
+    · rw [wsum_drop_end xs i hi, wsum_drop_end ys j hj]; grind
+
+private theorem wsum_add (x y : LC) (g : Exp → Coeff) :
+    wsum (add x y).terms.toList g = wsum x.terms.toList g + wsum y.terms.toList g := by
+  simp only [add, mergeSorted]
+  rw [wsum_mergeSortedAux]; simp only [Array.toList_empty, wsum_nil, List.drop_zero]; grind
+
+private theorem wsum_neg (x : LC) (g : Exp → Coeff) :
+    wsum (neg x).terms.toList g = -wsum x.terms.toList g := by
+  simp only [neg, Array.toList_map]
+  induction x.terms.toList with
+  | nil => rfl
+  | cons t xs ih => simp only [List.map_cons, wsum_cons, ih]; grind
+
+private theorem wsum_smul_lc (c : Coeff) (x : LC) (g : Exp → Coeff) :
+    wsum (smul c x).terms.toList g = c * wsum x.terms.toList g := by
+  unfold smul
+  by_cases hc : c == 0
+  · simp only [hc, ↓reduceIte, zero]; simp at hc; simp [hc, wsum_nil]
+  · simp only [hc, Bool.false_eq_true, ↓reduceIte, Array.toList_map]
+    induction x.terms.toList with
+    | nil => simp [wsum_nil]
+    | cons t xs ih => simp only [List.map_cons, wsum_cons, ih]; grind
+
+private theorem wsum_ofCoeff (c : Coeff) (g : Exp → Coeff) :
+    wsum (ofCoeff c).terms.toList g = c * g 0 := by
+  unfold ofCoeff ofTerm
+  by_cases hc : c == 0
+  · simp only [hc, ↓reduceIte]; simp at hc; simp [hc, wsum_nil]
+  · simp only [hc, Bool.false_eq_true, ↓reduceIte]; simp [wsum_cons, wsum_nil, Rat.add_zero]
+
+private theorem wsum_one (g : Exp → Coeff) : wsum one.terms.toList g = g 0 := by
+  simp [one, wsum_cons, wsum_nil, Rat.add_zero]
+
+private theorem wsum_zero (g : Exp → Coeff) : wsum zero.terms.toList g = 0 := rfl
+
+/-- `x · t` shifts the weight function by `t.exp` and scales by `t.coeff`. -/
+private theorem wsum_mulByTerm (x : LC) (t : Term) (g : Exp → Coeff) :
+    wsum (mulByTerm x t).terms.toList g = t.coeff * wsum x.terms.toList (fun e => g (e + t.exp)) := by
+  unfold mulByTerm
+  by_cases hc : t.coeff == 0
+  · simp only [hc, ↓reduceIte, zero]; simp at hc; simp [hc, wsum_nil]
+  · simp only [hc, Bool.false_eq_true, ↓reduceIte, Array.toList_map, mulTerms]
+    induction x.terms.toList with
+    | nil => simp [wsum_nil]
+    | cons s xs ih => simp only [List.map_cons, wsum_cons, ih]; grind
+
+/-- Multiplication is a convolution:
+`wsum (x · y) g = Σ_{t ∈ y} t.coeff Σ_{s ∈ x} s.coeff g(s.exp + t.exp)`. -/
+private theorem wsum_mul (x y : LC) (g : Exp → Coeff) :
+    wsum (mul x y).terms.toList g =
+      wsum y.terms.toList (fun ey => wsum x.terms.toList (fun ex => g (ex + ey))) := by
+  rw [mul_eq_mul']
+  unfold mul' isZero
+  by_cases hx : x.terms.isEmpty
+  · have : x.terms = #[] := Array.isEmpty_iff.mp hx
+    simp only [hx, Bool.true_or, ↓reduceIte, wsum_zero, this, Array.toList_empty, wsum_nil]
+    exact (wsum_zero_fn _).symm
+  by_cases hy : y.terms.isEmpty
+  · have : y.terms = #[] := Array.isEmpty_iff.mp hy
+    cases y with | mk ts =>
+    simp only at this; subst this
+    simp [wsum_zero, wsum_nil]
+  simp only [hx, hy, Bool.or_self, Bool.false_eq_true, ↓reduceIte]
+  rw [← Array.foldl_toList]
+  suffices h : ∀ (ts : List Term) (acc : LC),
+      wsum (ts.foldl (fun acc t => add acc (mulByTerm x t)) acc).terms.toList g =
+        wsum acc.terms.toList g + wsum ts (fun ey => wsum x.terms.toList (fun ex => g (ex + ey))) by
+    rw [h]; simp only [wsum_zero]; grind
+  intro ts
+  induction ts with
+  | nil => intro acc; simp only [List.foldl_nil, wsum_nil]; grind
+  | cons t ts ih =>
+    intro acc
+    simp only [List.foldl_cons, ih, wsum_add, wsum_mulByTerm, wsum_cons]
+    grind
+
+/-- Coefficients are weighted sums against an indicator. -/
+private theorem coeffAtExp_eq_wsum (xs : Array Term) (e : Exp) :
+    coeffAtExp xs e = wsum xs.toList (fun e' => if e' = e then 1 else 0) := by
+  unfold coeffAtExp
+  rw [← Array.foldl_toList]
+  induction xs.toList with
+  | nil => rfl
+  | cons t ts ih =>
+    rw [List.foldl_cons, List.foldl_add_init, ih, wsum_cons]
+    by_cases h : t.exp = e <;> simp [h] <;> grind
+
+/-- Two normalized values with the same weighted sums are equal. -/
+private theorem eq_of_wsum_eq (x y : LC) (hx : x.FullWF) (hy : y.FullWF)
+    (h : ∀ g, wsum x.terms.toList g = wsum y.terms.toList g) : x = y := by
+  apply eq_of_terms_eq
+  apply eq_of_coeffAtExp_eq x.terms y.terms hx.1 hy.1 hx.2 hy.2
+  intro e
+  rw [coeffAtExp_eq_wsum, coeffAtExp_eq_wsum, h]
+
+/-! #### Closure: every operation keeps values normalized -/
+
+theorem zero_fullWF : zero.FullWF := ⟨zero_wf, zero_sorted⟩
+theorem one_fullWF : one.FullWF := ⟨one_wf, one_sorted⟩
+
+theorem ofCoeff_fullWF (c : Coeff) : (ofCoeff c).FullWF := by
+  refine ⟨?_, ofCoeff_sorted c⟩
+  intro i hi
+  unfold ofCoeff ofTerm at hi ⊢
+  by_cases hc : c == 0
+  · simp [hc] at hi
+  · simp only [hc, Bool.false_eq_true, ↓reduceIte] at hi ⊢
+    have : i = 0 := by simp at hi; omega
+    subst this; simpa using hc
+
+theorem add_fullWF (x y : LC) (hx : x.FullWF) (hy : y.FullWF) : (add x y).FullWF :=
+  ⟨mergeSorted_wf x.terms y.terms, add_sorted x y hx.2 hy.2⟩
+
+theorem neg_fullWF (x : LC) (hx : x.FullWF) : (neg x).FullWF :=
+  ⟨neg_wf x hx.1, neg_sorted x hx.2⟩
+
+theorem smul_fullWF (c : Coeff) (x : LC) (hx : x.FullWF) : (smul c x).FullWF := by
+  unfold smul
+  by_cases hc : c == 0
+  · simp only [hc, ↓reduceIte]; exact zero_fullWF
+  · simp only [hc, Bool.false_eq_true, ↓reduceIte]
+    have hc' : c ≠ 0 := by simpa using hc
+    refine ⟨?_, ?_⟩
+    · intro i hi
+      simp only [Array.size_map] at hi
+      simp only [Array.getElem_map]
+      have := hx.1 i hi
+      grind
+    · intro k hk
+      simp only [Array.size_map] at hk
+      simp only [Array.getElem_map]
+      exact hx.2 k hk
+
+private theorem mulByTerm_fullWF (x : LC) (t : Term) (hx : x.FullWF) : (mulByTerm x t).FullWF := by
+  unfold mulByTerm
+  by_cases hc : t.coeff == 0
+  · simp only [hc, ↓reduceIte]; exact zero_fullWF
+  · simp only [hc, Bool.false_eq_true, ↓reduceIte]
+    have hc' : t.coeff ≠ 0 := by simpa using hc
+    refine ⟨?_, ?_⟩
+    · intro i hi
+      simp only [Array.size_map] at hi
+      simp only [Array.getElem_map, mulTerms]
+      have := hx.1 i hi
+      grind
+    · intro k hk
+      simp only [Array.size_map] at hk
+      simp only [Array.getElem_map, mulTerms]
+      have := hx.2 k hk
+      grind
+
+theorem mul_fullWF (x y : LC) (hx : x.FullWF) : (mul x y).FullWF := by
+  rw [mul_eq_mul']
+  unfold mul'
+  split
+  · exact zero_fullWF
+  · rw [← Array.foldl_toList]
+    suffices h : ∀ (ts : List Term) (acc : LC), acc.FullWF →
+        (ts.foldl (fun acc t => add acc (mulByTerm x t)) acc).FullWF from h _ _ zero_fullWF
+    intro ts
+    induction ts with
+    | nil => intro acc h; exact h
+    | cons t ts ih => intro acc h; exact ih _ (add_fullWF _ _ h (mulByTerm_fullWF x t hx))
+
+/-! #### The laws -/
+
+theorem add_assoc_wf (x y z : LC) (hx : x.FullWF) (hy : y.FullWF) (hz : z.FullWF) :
+    add (add x y) z = add x (add y z) :=
+  eq_of_wsum_eq _ _ (add_fullWF _ _ (add_fullWF _ _ hx hy) hz) (add_fullWF _ _ hx (add_fullWF _ _ hy hz))
+    (fun g => by simp only [wsum_add]; grind)
+
+theorem neg_add_cancel_wf (x : LC) (hx : x.FullWF) : add (neg x) x = zero :=
+  eq_of_wsum_eq _ _ (add_fullWF _ _ (neg_fullWF _ hx) hx) zero_fullWF
+    (fun g => by simp only [wsum_add, wsum_neg, wsum_zero]; grind)
+
+theorem mul_comm_wf (x y : LC) (hx : x.FullWF) (hy : y.FullWF) : mul x y = mul y x :=
+  eq_of_wsum_eq _ _ (mul_fullWF _ _ hx) (mul_fullWF _ _ hy) fun g => by
+    rw [wsum_mul, wsum_mul, wsum_swap]
+    apply wsum_congr; intro ex; apply wsum_congr; intro ey; rw [Rat.add_comm]
+
+theorem mul_assoc_wf (x y z : LC) (hx : x.FullWF) (hy : y.FullWF) :
+    mul (mul x y) z = mul x (mul y z) :=
+  eq_of_wsum_eq _ _ (mul_fullWF _ _ (mul_fullWF _ _ hx)) (mul_fullWF _ _ hx) fun g => by
+    rw [wsum_mul, wsum_mul, wsum_mul]
+    apply wsum_congr; intro ez
+    rw [wsum_mul]
+    apply wsum_congr; intro ey; apply wsum_congr; intro ex; rw [Rat.add_assoc]
+
+theorem left_distrib_wf (a b c : LC) (ha : a.FullWF) :
+    mul a (add b c) = add (mul a b) (mul a c) :=
+  eq_of_wsum_eq _ _ (mul_fullWF _ _ ha) (add_fullWF _ _ (mul_fullWF _ _ ha) (mul_fullWF _ _ ha)) fun g => by
+    rw [wsum_mul, wsum_add, wsum_add, wsum_mul, wsum_mul]
+
+theorem right_distrib_wf (a b c : LC) (ha : a.FullWF) (hb : b.FullWF) (hc : c.FullWF) :
+    mul (add a b) c = add (mul a c) (mul b c) := by
+  rw [mul_comm_wf _ _ (add_fullWF _ _ ha hb) hc, left_distrib_wf _ _ _ hc,
+    mul_comm_wf _ _ hc ha, mul_comm_wf _ _ hc hb]
+
+theorem mul_one_wf (x : LC) (hx : x.FullWF) : mul x one = x :=
+  eq_of_wsum_eq _ _ (mul_fullWF _ _ hx) hx fun g => by
+    rw [wsum_mul, wsum_one]; apply wsum_congr; intro e; rw [Rat.add_zero]
+
+theorem one_mul_wf (x : LC) (hx : x.FullWF) : mul one x = x := by
+  rw [mul_comm_wf _ _ one_fullWF hx, mul_one_wf _ hx]
+
+theorem add_zero_full (x : LC) (hx : x.FullWF) : add x zero = x := add_zero_wf x hx.1
+
+theorem smul_eq_mul_ofCoeff (c : Coeff) (x : LC) (hx : x.FullWF) : smul c x = mul (ofCoeff c) x :=
+  eq_of_wsum_eq _ _ (smul_fullWF _ _ hx) (mul_fullWF _ _ (ofCoeff_fullWF c)) fun g => by
+    rw [wsum_smul_lc, wsum_mul]
+    rw [← wsum_smul]
+    apply wsum_congr; intro e; rw [wsum_ofCoeff, Rat.zero_add]
+
+theorem smul_neg_wf (c : Coeff) (x : LC) (hx : x.FullWF) : smul (-c) x = neg (smul c x) :=
+  eq_of_wsum_eq _ _ (smul_fullWF _ _ hx) (neg_fullWF _ (smul_fullWF _ _ hx)) fun g => by
+    rw [wsum_smul_lc, wsum_neg, wsum_smul_lc]; grind
+
+theorem ofCoeff_add (a b : Coeff) : ofCoeff (a + b) = add (ofCoeff a) (ofCoeff b) :=
+  eq_of_wsum_eq _ _ (ofCoeff_fullWF _) (add_fullWF _ _ (ofCoeff_fullWF _) (ofCoeff_fullWF _)) fun g => by
+    rw [wsum_add, wsum_ofCoeff, wsum_ofCoeff, wsum_ofCoeff]; grind
+
 end Proofs
 
 /-! ## Automatic Differentiation -/
@@ -2139,178 +2402,90 @@ scoped notation "ε" => LC.epsilon
 /-- The infinite unit H = 1/ε -/
 scoped notation "H" => LC.H
 
-/-! ## Lean.Grind.CommRing Instance
+/-! ## Normalized values and the `Lean.Grind.CommRing` instance
 
-Provides integration with Lean's grind tactic for commutative ring reasoning.
+`LC` is a raw array of terms, and the ring laws fail for arrays that are not
+normalized (`⟨#[⟨0, 0⟩]⟩ + 0 = ⟨#[]⟩`), so `LC` itself is not a ring. `NLC` is the
+subtype of normalized values (`LC.FullWF`: sorted by strictly decreasing exponent,
+no zero coefficient). Every operation preserves it, and on `NLC` all the
+commutative-ring laws are theorems (`LC.add_assoc_wf`, `LC.mul_assoc_wf`, … above),
+so `grind` can reason about Levi-Civita arithmetic. Nothing here uses `sorry`.
 -/
 
-section GrindIntegration
+/-- Normalized Levi-Civita numbers: the commutative ring. -/
+def NLC := { x : LC // x.FullWF }
 
-open Lean.Grind
+namespace NLC
 
-instance : NatCast LC where
-  natCast n := LC.ofCoeff n
+open LC
 
-instance : IntCast LC where
-  intCast i := LC.ofCoeff i
+@[ext] theorem ext {x y : NLC} (h : x.val = y.val) : x = y := Subtype.ext h
 
-instance : SMul Nat LC where
-  smul n x := LC.smul (n : Coeff) x
+instance : Inhabited NLC := ⟨⟨zero, zero_fullWF⟩⟩
+instance : Zero NLC := ⟨⟨zero, zero_fullWF⟩⟩
+instance : One NLC := ⟨⟨one, one_fullWF⟩⟩
+instance : Add NLC := ⟨fun x y => ⟨add x.val y.val, add_fullWF _ _ x.property y.property⟩⟩
+instance : Neg NLC := ⟨fun x => ⟨neg x.val, neg_fullWF _ x.property⟩⟩
+instance : Sub NLC := ⟨fun x y => ⟨sub x.val y.val, add_fullWF _ _ x.property (neg_fullWF _ y.property)⟩⟩
+instance : Mul NLC := ⟨fun x y => ⟨mul x.val y.val, mul_fullWF _ _ x.property⟩⟩
+instance : NatCast NLC := ⟨fun n => ⟨ofCoeff n, ofCoeff_fullWF _⟩⟩
+instance : IntCast NLC := ⟨fun i => ⟨ofCoeff i, ofCoeff_fullWF _⟩⟩
+instance : OfNat NLC n := ⟨⟨ofCoeff n, ofCoeff_fullWF _⟩⟩
+instance : SMul Nat NLC := ⟨fun n x => ⟨smul n x.val, smul_fullWF _ _ x.property⟩⟩
+instance : SMul Int NLC := ⟨fun i x => ⟨smul i x.val, smul_fullWF _ _ x.property⟩⟩
 
-instance : SMul Int LC where
-  smul i x := LC.smul (i : Coeff) x
+/-- Powers by repeated multiplication (`LC.npow` squares instead; on normalized
+values the two agree by associativity). -/
+def pow (x : NLC) : Nat → NLC
+  | 0 => 1
+  | n + 1 => pow x n * x
 
-/-! ### Semiring axioms for grind -/
+instance : HPow NLC Nat NLC := ⟨pow⟩
 
-@[grind] theorem LC.add_zero' (x : LC) : x + 0 = x := add_zero x
-@[grind] theorem LC.add_comm' (x y : LC) : x + y = y + x := add_comm x y
-@[grind] theorem LC.add_assoc' (x y z : LC) : x + y + z = x + (y + z) := by
-  simp only [HAdd.hAdd, Add.add, add]
-  -- Note: This requires sortedness of x.terms, y.terms, z.terms
-  -- which holds for all properly constructed LC values.
-  -- The sortedness proof is deferred via sorry in mergeSortedAux_sorted.
-  have hsx : Sorted x.terms := by sorry
-  have hsy : Sorted y.terms := by sorry
-  have hsz : Sorted z.terms := by sorry
-  exact congrArg LC.mk (mergeSorted_assoc x.terms y.terms z.terms hsx hsy hsz)
+@[simp] theorem val_zero : (0 : NLC).val = zero := rfl
+@[simp] theorem val_one : (1 : NLC).val = one := rfl
+@[simp] theorem val_add (x y : NLC) : (x + y).val = add x.val y.val := rfl
+@[simp] theorem val_neg (x : NLC) : (-x).val = neg x.val := rfl
+@[simp] theorem val_sub (x y : NLC) : (x - y).val = sub x.val y.val := rfl
+@[simp] theorem val_mul (x y : NLC) : (x * y).val = mul x.val y.val := rfl
 
-/- ## Multiplication Ring Axioms
+/-- `ofCoeff 1` is `one`. -/
+private theorem ofCoeff_one : ofCoeff 1 = one := by
+  simp [ofCoeff, ofTerm, one]
 
-These axioms require proving properties of polynomial multiplication over sorted term arrays.
-The key insight is that multiplication creates convolutions: for any exponent e,
-  coeffAtExp(a * b, e) = Sum over pairs (e1, e2) with e1 + e2 = e of: coeffAtExp(a, e1) * coeffAtExp(b, e2)
+open Lean.Grind in
+instance : CommRing NLC where
+  add_zero x := ext (add_zero_full x.val x.property)
+  add_comm x y := ext (add_comm x.val y.val)
+  add_assoc x y z := ext (add_assoc_wf _ _ _ x.property y.property z.property)
+  mul_assoc x y z := ext (mul_assoc_wf _ _ _ x.property y.property)
+  mul_one x := ext (mul_one_wf _ x.property)
+  one_mul x := ext (one_mul_wf _ x.property)
+  left_distrib a b c := ext (left_distrib_wf _ _ _ a.property)
+  right_distrib a b c := ext (right_distrib_wf _ _ _ a.property b.property c.property)
+  zero_mul x := ext (zero_mul x.val)
+  mul_zero x := ext (mul_zero x.val)
+  pow_zero _ := rfl
+  pow_succ _ _ := rfl
+  ofNat_succ a := ext (by
+    show ofCoeff ((a + 1 : Nat) : Rat) = add (ofCoeff (a : Rat)) one
+    rw [← ofCoeff_one, ← ofCoeff_add]; congr 1; simp)
+  nsmul_eq_natCast_mul n a := ext (smul_eq_mul_ofCoeff _ _ a.property)
+  neg_add_cancel x := ext (neg_add_cancel_wf _ x.property)
+  sub_eq_add_neg _ _ := rfl
+  neg_zsmul i a := ext (by
+    show smul ((-i : Int) : Rat) a.val = neg (smul (i : Rat) a.val)
+    rw [Rat.intCast_neg]; exact smul_neg_wf _ _ a.property)
+  intCast_neg i := ext (by
+    show ofCoeff ((-i : Int) : Rat) = neg (ofCoeff (i : Rat))
+    exact eq_of_wsum_eq _ _ (ofCoeff_fullWF _) (neg_fullWF _ (ofCoeff_fullWF _)) fun g => by
+      rw [wsum_ofCoeff, wsum_neg, wsum_ofCoeff, Rat.intCast_neg]; grind)
+  mul_comm x y := ext (mul_comm_wf _ _ x.property y.property)
 
-Proof strategies:
-* mul_assoc: (a*b)*c and a*(b*c) have same coeffAtExp at each exponent by associativity of sums
-* left_distrib: coeffAtExp(a*(b+c), e) = coeffAtExp(a*b, e) + coeffAtExp(a*c, e) by linearity
-* right_distrib: follows from left_distrib by commutativity of merge/add
-* mul_comm: coeffAtExp(a*b, e) = coeffAtExp(b*a, e) by commutativity of Rat multiplication
--/
+/-- `grind` now proves ring identities in the Levi-Civita field. -/
+example (x y : NLC) : (x + y) * (x - y) = x * x - y * y := by grind
 
-@[grind] theorem LC.mul_assoc' (x y z : LC) : x * y * z = x * (y * z) := by
-  simp only [HMul.hMul, Mul.mul, mul]
-  -- Proof: Use eq_of_coeffAtExp_eq with convolution formula for coeffAtExp of multiplication
-  sorry
+end NLC
 
-@[grind] theorem LC.mul_one' (x : LC) : x * 1 = x := mul_one x
-@[grind] theorem LC.one_mul' (x : LC) : 1 * x = x := one_mul x
-
-@[grind] theorem LC.left_distrib' (a b c : LC) : a * (b + c) = a * b + a * c := by
-  simp only [HMul.hMul, Mul.mul, HAdd.hAdd, Add.add]
-  -- Proof: coeffAtExp distributes over + (coeffAtExp_mergeSorted), and multiplication
-  -- distributes over addition by linearity of the convolution sum
-  sorry
-
-@[grind] theorem LC.right_distrib' (a b c : LC) : (a + b) * c = a * c + b * c := by
-  simp only [HMul.hMul, Mul.mul, HAdd.hAdd, Add.add]
-  -- Proof: Similar to left_distrib, using the outer loop over (a+b).terms
-  sorry
-
-@[grind] theorem LC.zero_mul' (x : LC) : 0 * x = 0 := zero_mul x
-@[grind] theorem LC.mul_zero' (x : LC) : x * 0 = 0 := mul_zero x
-
-@[grind] theorem LC.pow_zero' (x : LC) : x ^ 0 = 1 := by
-  simp only [HPow.hPow, npow]
-  rfl
-@[grind] theorem LC.pow_succ' (x : LC) (n : Nat) : x ^ (n + 1) = x ^ n * x := by
-  simp only [HPow.hPow, npow]
-  -- Proof: By definition of npow, x^(n+1) = x^n * x
-  -- The npow function is defined as: npow 0 = 1, npow (n+1) = npow n * x
-  sorry
-
-/-! ### Ring axioms for grind -/
-
-@[grind] theorem LC.neg_add_cancel' (x : LC) : -x + x = 0 := by
-  simp only [HAdd.hAdd, Add.add, Neg.neg, neg, add, Zero.zero, zero]
-  -- Goal: ⟨mergeSorted (x.terms.map fun t => ⟨t.exp, -t.coeff⟩) x.terms⟩ = ⟨#[]⟩
-  congr 1
-  -- Key insight: each term in neg x has form ⟨e, -c⟩ paired with ⟨e, c⟩ in x
-  -- When merged at same exponent: (-c) + c = 0, which is filtered out
-  exact mergeSorted_neg_self x.terms
-
-@[grind] theorem LC.sub_eq_add_neg' (x y : LC) : x - y = x + -y := by
-  simp only [HSub.hSub, Sub.sub, sub, neg, HAdd.hAdd, Add.add, add]; rfl
-
-/-! ### CommSemiring/CommRing axiom -/
-
-@[grind] theorem LC.mul_comm' (x y : LC) : x * y = y * x := by
-  simp only [HMul.hMul, Mul.mul, mul]
-  -- Proof: coeffAtExp(x*y, e) = Sum c_x(e1) * c_y(e2) = Sum c_y(e2) * c_x(e1) = coeffAtExp(y*x, e)
-  -- by commutativity of Rat multiplication
-  sorry
-
-/-! ### Additional lemmas for Grind instances -/
-
-@[grind] theorem LC.ofNat_succ' (a : Nat) : (OfNat.ofNat (a + 1) : LC) = OfNat.ofNat a + 1 := by
-  simp only [OfNat.ofNat, ofCoeff, ofTerm, one, HAdd.hAdd, Add.add, add]
-  -- Proof: (a+1) as LC = ⟨#[⟨0, a+1⟩]⟩ = add ⟨#[⟨0, a⟩]⟩ ⟨#[⟨0, 1⟩]⟩
-  -- by coefficient addition at same exponent
-  sorry
-
-@[grind] theorem LC.nsmul_eq_natCast_mul' (n : Nat) (a : LC) : n • a = (n : LC) * a := by
-  simp only [HSMul.hSMul, SMul.smul, smul, NatCast.natCast, ofCoeff, HMul.hMul, Mul.mul, mul]
-  -- Proof: n • a scales all coefficients by n, same as mul ⟨#[⟨0, n⟩]⟩ a
-  sorry
-
-@[grind] theorem LC.neg_zsmul' (i : Int) (a : LC) : (-i) • a = -(i • a) := by
-  simp only [HSMul.hSMul, SMul.smul, smul, Neg.neg, neg]
-  -- Proof: (-i) • a scales by -i, -(i • a) negates all coefficients after scaling by i
-  -- Both give the same result since (-i) * c = -(i * c)
-  sorry
-
-@[grind] theorem LC.intCast_neg' (i : Int) : ((-i : Int) : LC) = -(i : LC) := by
-  -- Key insight: ((-i : Int) : Rat) = -((i : Int) : Rat) by Rat.intCast_neg
-  have hcast : ((-i : Int) : Rat) = -((i : Int) : Rat) := Rat.intCast_neg i
-  -- Unfold the definitions
-  show ofCoeff ((-i : Int) : Rat) = neg (ofCoeff ((i : Int) : Rat))
-  rw [hcast]
-  -- Now goal: ofCoeff (-(i : Rat)) = neg (ofCoeff (i : Rat))
-  unfold ofCoeff ofTerm neg
-  by_cases h : ((i : Int) : Rat) == 0
-  · -- i = 0 case
-    have hn : (-((i : Int) : Rat)) == 0 := by
-      simp only [beq_iff_eq] at h ⊢
-      simp only [h]; rfl
-    simp only [h, hn, ↓reduceIte, Array.map_empty]
-  · -- i ≠ 0 case
-    have hn : ¬((-((i : Int) : Rat)) == 0) := by
-      simp only [beq_iff_eq] at h ⊢
-      intro h'
-      -- Derive x = 0 from -x = 0 using Rat.add_neg_cancel
-      have h1 : (i : Rat) + (-(i : Rat)) = (i : Rat) + 0 := congrArg ((i : Rat) + ·) h'
-      simp only [Rat.add_neg_cancel, Rat.add_zero] at h1
-      exact h h1.symm
-    simp [h, hn]
-
-/-! ### Lean.Grind.CommRing instance -/
-
-instance : Semiring LC where
-  add_zero := LC.add_zero'
-  add_comm := LC.add_comm'
-  add_assoc := LC.add_assoc'
-  mul_assoc := LC.mul_assoc'
-  mul_one := LC.mul_one'
-  one_mul := LC.one_mul'
-  left_distrib := LC.left_distrib'
-  right_distrib := LC.right_distrib'
-  zero_mul := LC.zero_mul'
-  mul_zero := LC.mul_zero'
-  pow_zero := LC.pow_zero'
-  pow_succ := LC.pow_succ'
-  ofNat_succ := LC.ofNat_succ'
-  nsmul_eq_natCast_mul := LC.nsmul_eq_natCast_mul'
-
-instance : Ring LC where
-  neg_add_cancel := LC.neg_add_cancel'
-  sub_eq_add_neg := LC.sub_eq_add_neg'
-  neg_zsmul := LC.neg_zsmul'
-  intCast_neg := LC.intCast_neg'
-
-instance : CommSemiring LC where
-  mul_comm := LC.mul_comm'
-
-instance : CommRing LC where
-
-end GrindIntegration
 
 end LeviCivita.Core

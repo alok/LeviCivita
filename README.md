@@ -129,7 +129,7 @@ rational exponents of bounded denominator, in which `ε` has every root:
 import LeviCivita.Puiseux
 open LeviCivita.Series
 
-example : Lean.Grind.Field Puiseux := inferInstance
+noncomputable example : Lean.Grind.Field Puiseux := inferInstance
 example : Lean.Grind.OrderedRing Puiseux := inferInstance
 #check Puiseux.root_pow       -- (ε^{1/N})^N = ε
 #check Puiseux.root_lt_ofRat  -- 0 < q → ε^{1/N} < q   (and Puiseux.root_pos)

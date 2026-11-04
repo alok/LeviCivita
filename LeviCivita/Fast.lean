@@ -46,6 +46,64 @@ instance : OfNat LC n where
 instance : Coe Float LC where
   coe := ofFloat
 
+/-- `1.5 · 2⁵²`. The constants of `snapExp` are top-level definitions so that
+they are computed once, not per call in the inner loop of `*`. -/
+def roundingMagic : Float := 6755399441055744.0
+/-- `lcm(1, …, 16)`. -/
+def snapDenominator : Float := 720720.0
+/-- Relative tolerance of `snapExp`. -/
+def snapTol : Float := 1e-12
+/-- Largest continued-fraction denominator `snapExp` tries. -/
+def snapMaxDen : Float := 1e6
+
+/-- `e` is an integer (for `|e| < 2⁵¹`). Adding and removing `1.5 · 2⁵²` rounds
+to an integer in plain Float arithmetic, which is much cheaper than a call to
+`Float.round`. -/
+@[inline] def isIntegral (e : Float) : Bool :=
+  (e + roundingMagic) - roundingMagic == e
+
+/-- Canonical form of an exponent (`snapExp`; this is its non-integer path).
+
+Exponents are Floats, and two computations of the same rational exponent can
+disagree in the last bit: `0.1 + 0.2 ≠ 0.3`, and `ε^{0.1} · ε^{0.2}` would land
+next to `ε^{0.3}` instead of on it, so `x - x` could leave two uncancelled terms
+and `isStandard (ε^{0.1} ε^{0.2} H^{0.3})` would fail. Every exponent the
+arithmetic creates goes through `snapExp`: an exponent within `1e-12` (relative)
+of a rational `p/q` with `q ≤ 10⁶` is replaced by the correctly rounded Float
+`p/q`, which is the same value whichever way `p/q` was reached (and the value of
+a literal such as `0.3` or `1/3`). Integers are left alone.
+
+Fast path: a denominator dividing `720720 = lcm(1, …, 16)` is found with one
+multiplication, and `k / 720720` rounds to the same Float as the reduced `p/q`
+(both are the correctly rounded value of one rational). Other denominators fall
+back to continued fractions. -/
+def snapExpSlow (e : Float) : Float := Id.run do
+  if e.isNaN || e.isInf then return e
+  let tol := snapTol * (if e.abs > 1 then e.abs else 1)
+  let scaled := e * snapDenominator
+  let k := (scaled + roundingMagic) - roundingMagic
+  if (scaled - k).abs ≤ tol * snapDenominator then return k / snapDenominator
+  -- Continued-fraction convergents p/q of e.
+  let mut x := e
+  let mut p0 : Float := 1.0
+  let mut q0 : Float := 0.0
+  let mut p1 : Float := e.floor
+  let mut q1 : Float := 1.0
+  for _ in [0:40] do
+    if (e - p1 / q1).abs ≤ tol then return p1 / q1
+    let frac := x - x.floor
+    if frac == 0.0 then break
+    x := 1.0 / frac
+    let a := x.floor
+    let p2 := a * p1 + p0
+    let q2 := a * q1 + q0
+    if q2 > snapMaxDen then break
+    p0 := p1; q0 := q1; p1 := p2; q1 := q2
+  return e
+
+@[inherit_doc snapExpSlow, inline]
+def snapExp (e : Float) : Float := if isIntegral e then e else snapExpSlow e
+
 /-- Merge sorted arrays (descending by exp). -/
 @[inline] private def mergeSorted (xs ys : Array Term) : Array Term := Id.run do
   let mut i := 0
@@ -87,14 +145,21 @@ instance : Neg LC where
 instance : Sub LC where
   sub x y := x + (-y)
 
-/-- Multiply LC by a single term. -/
-@[inline] private def mulByTerm (x : LC) (t : Term) : LC :=
-  if t.coeff == 0.0 then { terms := #[] }
-  else { terms := x.terms.map fun s => ⟨s.exp + t.exp, s.coeff * t.coeff⟩ }
+/-- `x · t`, with every new exponent put in canonical form (`snapExp`). -/
+@[inline] private def mulByTerm (x : LC) (t : Term) : LC := Id.run do
+  if t.coeff == 0.0 then return { terms := #[] }
+  let mut out : Array Term := Array.mkEmpty x.terms.size
+  for s in x.terms do
+    let e := s.exp + t.exp
+    out := out.push ⟨if isIntegral e then e else snapExpSlow e, s.coeff * t.coeff⟩
+  return { terms := out }
 
 instance : Mul LC where
   mul x y := Id.run do
-    if x.terms.isEmpty || y.terms.isEmpty then return { terms := #[] }
+    if x.terms.isEmpty || y.terms.isEmpty then
+      -- `0 · NaN = NaN`, as for Float: an undefined factor stays undefined.
+      if (x.terms ++ y.terms).any (·.coeff.isNaN) then return { terms := #[⟨0.0, 0.0 / 0.0⟩] }
+      return { terms := #[] }
     let mut result : LC := { terms := #[] }
     for t in y.terms do
       result := result + mulByTerm x t
@@ -115,6 +180,7 @@ instance : HPow LC Nat LC where
 
 /-- Get coefficient at exponent (linear search - fast for small arrays). -/
 def getCoeff (x : LC) (e : Float) : Float :=
+  let e := snapExp e
   match x.terms.find? (·.exp == e) with
   | some t => t.coeff
   | none => 0.0
@@ -141,7 +207,12 @@ def invert (x : LC) (terms : Nat := 10) : Option LC := do
     power := power * delta
     let sign := if i % 2 == 1 then -1.0 else 1.0
     result := result + { terms := power.terms.map fun t => ⟨t.exp, sign * t.coeff⟩ }
-  some (leadInv * result)
+  -- `δ^terms` is the first power left out, so only terms of relative valuation
+  -- `< terms · ν(δ)` are complete; drop the rest rather than return wrong ones.
+  let exact : LC := match delta.terms[0]? with
+    | some t => { terms := result.terms.filter (- ·.exp < terms.toFloat * -t.exp) }
+    | none => result
+  some (leadInv * exact)
 
 instance : Inv LC where
   inv x := (invert x).getD 0
@@ -170,45 +241,74 @@ instance : ToString LC where
 NaN standard part, which `st?` reports as `none`. -/
 def undefined : LC := { terms := #[⟨0.0, 0.0 / 0.0⟩] }
 
-/-- Taylor expansion around the standard part: with `a = std x` and the
-infinitesimal remainder `δ = x − a`, returns `Σₖ derivs[k] / k! · δᵏ`, where
-`derivs[k] = f⁽ᵏ⁾(a)`. Each power of `δ` is truncated below `ε^order`
-(`order = derivs.size − 1`), so the result is exact through that order: a
-seed `a + ε` then carries `f(a), f'(a), f''(a)/2, …` as its `ε⁰, ε¹, ε², …`
-coefficients. Only finite `x` have a Taylor germ: for an infinite `x` (any
-`H` term) the result is `undefined`. -/
-def taylorAt (derivs : Array Float) (x : LC) : LC := Id.run do
+/-- `Σₖ c(k) δᵏ` with `δ = x − std x`, the Taylor series of a function at the
+standard part `a = std x` when `c k = f⁽ᵏ⁾(a) / k!`. Every term of valuation
+`< prec` is exact: each power of `δ` is truncated at `prec` (a dropped term cannot
+come back, since multiplying by the infinitesimal `δ` only raises valuations), and
+the sum stops once `δᵏ` is entirely beyond `prec`. That takes `⌈prec / ν(δ)⌉`
+powers, so `sin (a + ε)` needs 5 and `sin (a + √ε)` needs 10. Past `maxTerms`
+powers (only when `ν(δ) < prec / maxTerms`) the result is cut at valuation
+`maxTerms · ν(δ)`, below which it is still exact. Only finite `x` have a Taylor
+germ: for an infinite `x` (any `H` term) the result is `undefined`. -/
+def taylorSeries (c : Nat → Float) (x : LC) (prec : Float := 5) (maxTerms : Nat := 64) : LC := Id.run do
   if x.terms.any (·.exp > 0.0) then return undefined
-  let a := std x
-  let delta := x - ofFloat a
-  let minExp := -(derivs.size - 1).toFloat
-  let mut acc : LC := 0
+  let delta := x - ofFloat (std x)
+  let keep (y : LC) (bound : Float) : LC := { terms := y.terms.filter (- ·.exp < bound) }
+  let mut acc : LC := ofFloat (c 0)
   let mut pow : LC := 1
-  let mut fact : Float := 1.0
-  for k in [0:derivs.size] do
-    if k > 0 then
-      pow := { terms := (pow * delta).terms.filter (·.exp ≥ minExp) }
-      fact := fact * k.toFloat
-    let c := derivs[k]! / fact
-    acc := acc + { terms := pow.terms.map fun t => ⟨t.exp, c * t.coeff⟩ }
-  return acc
+  let mut done := false
+  for k in [1:maxTerms + 1] do
+    pow := keep (pow * delta) prec
+    if pow.terms.isEmpty then
+      done := true
+      break
+    let ck := c k
+    acc := acc + { terms := pow.terms.map fun t => ⟨t.exp, ck * t.coeff⟩ }
+  if done then return acc
+  match delta.terms[0]? with
+  | some t => return keep acc (maxTerms.toFloat * -t.exp)
+  | none => return acc
 
-/-- Number of Taylor terms used by the elementary functions: exact through `ε⁴`. -/
+/-- `0!, 1!, …, 170!` (`171!` overflows a Float). -/
+def factorialTable : Array Float :=
+  (List.range 170).foldl (fun acc i => acc.push (acc.back! * (i + 1).toFloat)) #[1.0]
+
+/-- `k!` as a Float (`∞` past `170!`). -/
+@[inline] def factorial (k : Nat) : Float :=
+  if h : k < factorialTable.size then factorialTable[k] else 1.0 / 0.0
+
+/-- Taylor expansion from a finite list of derivatives `derivs[k] = f⁽ᵏ⁾(a)` at
+`a = std x`: `Σ_{k < n} derivs[k] / k! · δᵏ` with `n = derivs.size`. The result
+keeps exactly the terms this determines: those of valuation `< n` (through `ε^{n−1}`
+for a seed `a + ε`) and `< n · ν(δ)` (the first term `δⁿ` that is missing). So
+`taylorAt` with five derivatives gives `f(a + ε)` through `ε⁴`, and `f(a + √ε)`
+through `ε²`. Infinite input is `undefined`. -/
+def taylorAt (derivs : Array Float) (x : LC) : LC :=
+  let n := derivs.size
+  let y := taylorSeries (fun k => if k < n then derivs[k]! / factorial k else 0.0) x n.toFloat n
+  let delta := x - ofFloat (std x)
+  match delta.terms[0]? with
+  | some t => if x.terms.any (·.exp > 0.0) then y
+              else { terms := y.terms.filter (- ·.exp < n.toFloat * -t.exp) }
+  | none => y
+
+/-- Precision of the elementary functions: every term of valuation `< jetOrder`
+is exact, so `f(a + ε)` carries `f(a), f'(a), …, f⁽⁴⁾(a)/4!`. -/
 def jetOrder : Nat := 5
 
-/-- Sine, exact through `ε⁴` (see `taylorAt`). -/
+/-- Sine: exact for every term of valuation `< jetOrder` (see `taylorSeries`). -/
 def sin (x : LC) : LC :=
   let a := std x
   let s := Float.sin a
   let c := Float.cos a
-  taylorAt (Array.ofFn (n := jetOrder) fun k => #[s, c, -s, -c][k.val % 4]!) x
+  taylorSeries (fun k => (match k % 4 with | 0 => s | 1 => c | 2 => -s | _ => -c) / factorial k) x jetOrder.toFloat
 
-/-- Cosine, exact through `ε⁴` (see `taylorAt`). -/
+/-- Cosine: exact for every term of valuation `< jetOrder` (see `taylorSeries`). -/
 def cos (x : LC) : LC :=
   let a := std x
   let s := Float.sin a
   let c := Float.cos a
-  taylorAt (Array.ofFn (n := jetOrder) fun k => #[c, -s, -c, s][k.val % 4]!) x
+  taylorSeries (fun k => (match k % 4 with | 0 => c | 1 => -s | 2 => -c | _ => s) / factorial k) x jetOrder.toFloat
 
 end FastLC
 

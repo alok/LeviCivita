@@ -24,8 +24,13 @@ ray marchers, collision tests) needs:
 * `grad`/`valueAndGrad`: the exact gradient of `f : (Fin n → LC) → LC` from **one**
   evaluation, with coordinate `i` seeded at its own infinitesimal scale `ε^{1+i/n}`
   (see `valueAndGrad` for why this is lexicographic differentiation).
-* Exact Taylor germs of `exp`, `log`, `sinh`, `cosh`, `tan` (and `sin`, `cos` in
-  `Fast`): `f(a + ε)` carries `f(a), f'(a), f''(a)/2, …` through `ε⁴`.
+* Exact Taylor germs of `exp`, `log`, `sinh`, `cosh`, `tan`, `atan` (and `sin`, `cos`
+  in `Fast`): every term of valuation `< 5` is exact, so `f(a + ε)` carries
+  `f(a), f'(a), f''(a)/2, …` through `ε⁴`, and `f(a + √ε)` through `ε^{9/2}`.
+
+Coefficients are Floats; exponents are kept canonical by `Fast.snapExp`, so equal
+rational exponents are equal Floats; and every series returns only the terms it
+determines (see `docs/NSA.md`, "Precision model").
 
 `LeviCivita.NSA` builds standard parts, limits, continuity and derivatives on top
 of this; `LeviCivita.Germ` is the truncated arithmetic that makes `grad` cheap.
@@ -85,16 +90,24 @@ def splitLead? (x : LC) : Option (Term × LC) := do
 /-- `Σₖ c(k) δᵏ` for an infinitesimal `δ`, exact for every term of valuation
 `< prec`: each power `δᵏ` is truncated at `prec` (terms beyond it cannot come back,
 since multiplying by `δ` only raises valuations), and the sum stops when `δᵏ` is
-gone. Capped at `maxTerms` powers (reached only when `ν(δ)` is tiny). -/
+gone. Capped at `maxTerms` powers, which is reached only when
+`ν(δ) < prec / maxTerms`; then the result is cut at valuation `maxTerms · ν(δ)`
+(the first missing power), below which it is still exact. -/
 def seriesTo (c : Nat → Float) (delta : LC) (prec : Float) (maxTerms : Nat := 64) : LC := Id.run do
-  let keep (y : LC) : LC := { terms := y.terms.filter (- ·.exp < prec) }
-  let mut acc : LC := keep (ofFloat (c 0))
+  let keep (y : LC) (bound : Float) : LC := { terms := y.terms.filter (- ·.exp < bound) }
+  let mut acc : LC := keep (ofFloat (c 0)) prec
   let mut pow : LC := 1
-  for k in [1:maxTerms] do
-    pow := keep (pow * delta)
-    if pow.terms.isEmpty then break
+  let mut done := false
+  for k in [1:maxTerms + 1] do
+    pow := keep (pow * delta) prec
+    if pow.terms.isEmpty then
+      done := true
+      break
     acc := acc + smul (c k) pow
-  return acc
+  if done then return acc
+  match valuation? delta with
+  | some v => return keep acc (maxTerms.toFloat * v)
+  | none => return acc
 
 /-- Generalized binomial coefficient `C(p, k) = p (p−1) ⋯ (p−k+1) / k!`. -/
 def binom (p : Float) (k : Nat) : Float :=
@@ -122,7 +135,7 @@ def rpow (x : LC) (p : Float) (prec : Float := 5) : LC :=
   match splitLead? x with
   | some (l, δ) =>
     if l.coeff ≤ 0.0 then 0
-    else { terms := #[⟨l.exp * p, Float.pow l.coeff p⟩] } * seriesTo (binom p) δ prec
+    else { terms := #[⟨snapExp (l.exp * p), Float.pow l.coeff p⟩] } * seriesTo (binom p) δ prec
   | none => 0
 
 /-- Square root (`rpow x ½`): `√(a + bε) = √a + (b / 2√a) ε + …`, and `√(bε) = √b ε^{1/2}`,
@@ -145,7 +158,7 @@ def norm {n : Nat} (v : Fin n → LC) : LC :=
 `ε^{eᵢ}` with `eᵢ = 1 + i/n ∈ [1, 2)`. Distinct exponents keep the coordinates
 apart, and any product of two of them has exponent `≥ 2`, beyond every `eⱼ`, so it
 never lands on a first-order coefficient. -/
-@[inline] def seedExp (n i : Nat) : Float := 1.0 + i.toFloat / n.toFloat
+@[inline] def seedExp (n i : Nat) : Float := snapExp (1.0 + i.toFloat / n.toFloat)
 
 /-- Value and exact gradient of `f` at `x` in **one** evaluation: coordinate `i`
 is seeded as `xᵢ + ε^{eᵢ}` (`seedExp`), and `∂ᵢf` is the coefficient of `ε^{eᵢ}`
@@ -178,40 +191,55 @@ def partialAt {n : Nat} (f : (Fin n → LC) → LC) (x : Fin n → Float) (i : F
 
 /-! ## Elementary functions as exact jets
 
-Each is `taylorAt` with the closed-form derivatives at the standard part, so a
-seed `a + ε` yields `f(a), f'(a), f''(a)/2, …` exactly through `ε⁴`. They are
-defined on finite elements (and `log` on positive elements of valuation 0); outside
-that, `exp H` or `log ε` is not an element of the field, and the result is
-`undefined`. -/
+Each is `taylorSeries` with the closed-form derivatives at the standard part, so
+every term of valuation `< jetOrder` (`5`) is exact: a seed `a + ε` yields
+`f(a), f'(a), f''(a)/2, …, f⁽⁴⁾(a)/4!`, and `f(a + √ε)` is exact through `ε^{4.5}`.
+They are defined on finite elements (and `log` on positive elements of valuation
+0); outside that, `exp H` or `log ε` is not an element of the field, and the
+result is `undefined`. -/
 
-/-- `exp`, exact through `ε⁴`. -/
+/-- `exp`, exact below valuation `jetOrder`. -/
 def exp (x : LC) : LC :=
   let e := Float.exp (std x)
-  taylorAt (Array.replicate jetOrder e) x
+  taylorSeries (fun k => e / factorial k) x jetOrder.toFloat
 
-/-- Natural log of a positive finite element, exact through `ε⁴`:
-`log⁽ᵏ⁾(a) = (−1)^(k−1) (k−1)! / aᵏ`. -/
+/-- Natural log of a positive finite element, exact below valuation `jetOrder`:
+the `k`-th Taylor coefficient at `a` is `(−1)^(k−1) / (k aᵏ)`. -/
 def log (x : LC) : LC :=
   let a := std x
   if valuation? x != some 0.0 || a ≤ 0.0 then undefined else
-  taylorAt (Array.ofFn (n := jetOrder) fun k =>
-    if k.val == 0 then Float.log a
-    else
-      let m := k.val - 1
-      let fact := (List.range m).foldl (fun acc i => acc * (i + 1).toFloat) 1.0
-      (if m % 2 == 0 then 1.0 else -1.0) * fact / Float.pow a k.val.toFloat) x
+  taylorSeries (fun k =>
+    if k == 0 then Float.log a
+    else (if k % 2 == 1 then 1.0 else -1.0) / (k.toFloat * Float.pow a k.toFloat)) x jetOrder.toFloat
 
-/-- `sinh`, exact through `ε⁴`. -/
+/-- `sinh`, exact below valuation `jetOrder`. -/
 def sinh (x : LC) : LC :=
   let a := std x
-  taylorAt (Array.ofFn (n := jetOrder) fun k =>
-    if k.val % 2 == 0 then Float.sinh a else Float.cosh a) x
+  taylorSeries (fun k => (if k % 2 == 0 then Float.sinh a else Float.cosh a) / factorial k) x jetOrder.toFloat
 
-/-- `cosh`, exact through `ε⁴`. -/
+/-- `cosh`, exact below valuation `jetOrder`. -/
 def cosh (x : LC) : LC :=
   let a := std x
-  taylorAt (Array.ofFn (n := jetOrder) fun k =>
-    if k.val % 2 == 0 then Float.cosh a else Float.sinh a) x
+  taylorSeries (fun k => (if k % 2 == 0 then Float.cosh a else Float.sinh a) / factorial k) x jetOrder.toFloat
+
+/-- `atan`, exact below valuation `jetOrder`. Its Taylor coefficients at `a` come
+from `atan' = 1/(1 + x²)`: with `u = 1 + a²`, `atan (a + δ) = atan a + Σₖ cₖ δᵏ`
+where `Σ_{k≥1} k cₖ δ^{k−1} = 1/(u + 2aδ + δ²)`, so `k cₖ` satisfies the
+recurrence of that series' coefficients `dⱼ`: `u dⱼ + 2a dⱼ₋₁ + dⱼ₋₂ = 0`. -/
+def atan (x : LC) : LC :=
+  let a := std x
+  let u := 1.0 + a * a
+  -- d j = coefficient of δʲ in 1 / (u + 2aδ + δ²)
+  let d : Nat → Float := fun j => Id.run do
+    let mut dm2 : Float := 0.0
+    let mut dm1 : Float := 1.0 / u
+    if j == 0 then return dm1
+    for _ in [1:j + 1] do
+      let dj := -(2.0 * a * dm1 + dm2) / u
+      dm2 := dm1
+      dm1 := dj
+    return dm1
+  taylorSeries (fun k => if k == 0 then Float.atan a else d (k - 1) / k.toFloat) x jetOrder.toFloat
 
 /-- `tan = sin / cos`. -/
 def tan (x : LC) : LC := sin x / cos x

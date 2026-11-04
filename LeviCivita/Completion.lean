@@ -651,6 +651,78 @@ theorem const_inj {a b : F} (h : const a = const b) : a = b := by
   · exact h'
   · have := const_lt.mpr h'; rw [h] at this; exact (lt_irrefl _ this).elim
 
+/-! ### Completeness -/
+
+theorem const_sub (a b : F) : const (a - b) = const a - const b := by
+  rw [Ring.sub_eq_add_neg a b, const_add, const_neg]; rfl
+
+theorem const_near {a b d : F} : Near (const a) (const b) (const d) ↔ Near a b d := by
+  simp only [Near, ← const_sub, const_lt]
+
+/-- Every element is approximated by elements of `F`. -/
+theorem dense (y : Completion F) {δ : F} (hδ : 0 < δ) : ∃ c, Near y (const c) (const δ) := by
+  induction y using ind with | h s hs =>
+  obtain ⟨N, hN⟩ := tendsto_mk s hs hδ
+  obtain ⟨u, v⟩ := hN N (Nat.le_refl _)
+  exact ⟨s N, v, u⟩
+
+/-- Every positive element is above a positive element of `F`. -/
+theorem pos_bound {D : Completion F} (hD : 0 < D) : ∃ δ, 0 < δ ∧ const δ < D := by
+  induction D using ind with | h s hs =>
+  rw [lt_def] at hD
+  have : mk s hs - 0 = mk s hs := by grind
+  rw [this, isPos_mk] at hD
+  obtain ⟨η, hη, N, hN⟩ := hD
+  refine ⟨η / 2, by grind, ?_⟩
+  rw [lt_def]
+  show IsPos (mk s hs + -mk _ _)
+  rw [mk_neg, mk_add, isPos_mk]
+  exact ⟨η / 2, by grind, N, fun n hn => by have := hN n hn; grind⟩
+
+/-- `F` has a sequence of positive elements that eventually drops below any `d > 0`.
+(True in the Puiseux field with `εᵏ`; false in fields of uncountable cofinality.) -/
+def HasNullSeq (F : Type u) [Field F] [LE F] [LT F] : Prop :=
+  ∃ δ : Nat → F, (∀ k, 0 < δ k) ∧ ∀ d, 0 < d → ∃ K, ∀ k, K ≤ k → δ k < d
+
+/-- **The completion is Cauchy-complete**: every Cauchy sequence in it converges. -/
+theorem complete (hF : HasNullSeq F) (x : Nat → Completion F) (hx : IsCauchy x) :
+    ∃ L, ∀ D, 0 < D → ∃ N, ∀ n, N ≤ n → Near (x n) L D := by
+  obtain ⟨δ, hδpos, hδ⟩ := hF
+  -- approximate each `x k` within `δ k`
+  have happrox : ∀ k, ∃ c, Near (x k) (const c) (const (δ k)) := fun k => dense (x k) (hδpos k)
+  let c : Nat → F := fun k => Classical.choose (happrox k)
+  have hc : ∀ k, Near (x k) (const (c k)) (const (δ k)) := fun k => Classical.choose_spec (happrox k)
+  -- `c` is Cauchy in `F`
+  have hcC : IsCauchy c := by
+    intro d hd
+    obtain ⟨K, hK⟩ := hδ (d / 3) (by grind)
+    obtain ⟨N, hN⟩ := hx (const (d / 3)) (const_lt.mpr (by grind : (0 : F) < d / 3))
+    refine ⟨max K N, fun m n hm hn => ?_⟩
+    have h1 := near_symm (hc m)
+    have h2 := hN m n (by omega) (by omega)
+    have h3 := hc n
+    have := near_trans (near_trans h1 h2) h3
+    have hb : const (δ m) + const (d / 3) + const (δ n) ≤ const d := by
+      rw [← const_add, ← const_add]
+      have := hK m (by omega); have := hK n (by omega)
+      exact Or.inr (const_lt.mpr (by grind))
+    exact const_near.mp (near_mono this hb)
+  refine ⟨mk c hcC, fun D hD => ?_⟩
+  obtain ⟨e, he, heD⟩ := pos_bound hD
+  obtain ⟨K, hK⟩ := hδ (e / 2) (by grind)
+  obtain ⟨M, hM⟩ := tendsto_mk c hcC (by grind : (0 : F) < e / 2)
+  refine ⟨max K M, fun n hn => ?_⟩
+  have h1 := hc n
+  obtain ⟨u, v⟩ := hM n (by omega)
+  have h2 : Near (const (c n)) (mk c hcC) (const (e / 2)) := ⟨u, v⟩
+  have := near_trans h1 h2
+  apply near_mono this
+  have : const (δ n) + const (e / 2) < D := by
+    rw [← const_add]
+    have : δ n + e / 2 < e := by have := hK n (by omega); grind
+    exact lt_trans (const_lt.mpr this) heD
+  exact Or.inr this
+
 end Completion
 
 /-! ## The Levi-Civita field -/

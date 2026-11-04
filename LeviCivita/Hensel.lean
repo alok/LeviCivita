@@ -30,8 +30,9 @@ attribute [local instance high] Semiring.ofNat
 
 universe u v
 
-/-- The structure of a Levi-Civita-like field `L` over a coefficient field `R`. -/
-structure LCData (R : Type u) (L : Type v)
+/-- An ordered embedding `ι : R → L` together with rational powers `e q = ε^q` of a
+positive infinitesimal. -/
+structure LCPre (R : Type u) (L : Type v)
     [Field R] [LE R] [LT R] [Std.IsLinearOrder R] [Std.LawfulOrderLT R] [OrderedRing R]
     [Field L] [LE L] [LT L] [Std.IsLinearOrder L] [Std.LawfulOrderLT L] [OrderedRing L] where
   ι : R → L
@@ -45,17 +46,23 @@ structure LCData (R : Type u) (L : Type v)
   e_pos : ∀ q, 0 < e q
   /-- `ε^q` is infinitesimal for `q > 0`. -/
   e_small : ∀ q, 0 < q → ∀ r : R, 0 < r → e q < ι r
+
+/-- The structure of a Levi-Civita-like field `L` over a coefficient field `R`. -/
+structure LCData (R : Type u) (L : Type v)
+    [Field R] [LE R] [LT R] [Std.IsLinearOrder R] [Std.LawfulOrderLT R] [OrderedRing R]
+    [Field L] [LE L] [LT L] [Std.IsLinearOrder L] [Std.LawfulOrderLT L] [OrderedRing L]
+    extends LCPre R L where
   /-- Leading terms. -/
   lead : ∀ x : L, x ≠ 0 → ∃ (r : R) (q : Rat) (δ : L), r ≠ 0 ∧
     (∀ s : R, 0 < s → abs δ < ι s) ∧ x = ι r * e q * (1 + δ)
   complete : ∀ s : Nat → L, Cauchy.IsCauchy s → ∃ x, Tendsto s x
 
-namespace LCData
+namespace LCPre
 
 variable {R : Type u} {L : Type v}
   [Field R] [LE R] [LT R] [Std.IsLinearOrder R] [Std.LawfulOrderLT R] [OrderedRing R]
   [Field L] [LE L] [LT L] [Std.IsLinearOrder L] [Std.LawfulOrderLT L] [OrderedRing L]
-  (D : LCData R L)
+  (D : LCPre R L)
 
 /-! ## The embedding -/
 
@@ -297,6 +304,15 @@ theorem not_fin_e {q : Rat} (h : q < 0) : ¬ D.Fin (D.e q) := by
     rw [← D.e_add, show q + -q = 0 by grind, D.e_zero] at h2
     grind
   · have := D.e_pos q; grind
+
+end LCPre
+
+namespace LCData
+
+variable {R : Type u} {L : Type v}
+  [Field R] [LE R] [LT R] [Std.IsLinearOrder R] [Std.LawfulOrderLT R] [OrderedRing R]
+  [Field L] [LE L] [LT L] [Std.IsLinearOrder L] [Std.LawfulOrderLT L] [OrderedRing L]
+  (D : LCData R L)
 
 /-! ## Leading terms -/
 

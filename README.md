@@ -96,8 +96,28 @@ example : (1 + LCFrac.eps)⁻¹ * (1 + LCFrac.eps) = 1 := by have := LCFrac.eps_
 #check LCFrac.eps_lt_ofRat      -- 0 < q → ε < q
 ```
 
-The full Levi-Civita field is the completion of `LCFrac`. `Fast` and the
-analysis modules compute in it with explicit truncation.
+### Exact series: `Laurent`
+
+`LeviCivita.Series` defines power series `Σ aₙ εⁿ` with infinitely many terms
+and exact Cauchy multiplication. It proves they form an ordered integral domain,
+ordered by the sign of the lowest nonzero coefficient. Their field of fractions
+`Laurent = ℚ((ε))` is an ordered field (the integer-exponent part of the
+Levi-Civita field) that contains `√(1+ε)`:
+
+```lean
+import LeviCivita.Series
+open LeviCivita.Series
+
+#eval (List.range 6).map PS.sqrtCoeff  -- [1, 1/2, -1/8, 1/16, -5/128, 7/256]
+#check Laurent.sqrtOnePlusEps_sq        -- √(1+ε) * √(1+ε) = 1 + ε, exactly
+#check Laurent.inv_one_sub_eps          -- (1 - ε)⁻¹ = 1 + ε + ε² + ⋯
+#check Laurent.ofRat_lt_inv_eps         -- q < ε⁻¹ for every rational q
+```
+
+Equality of infinite series is undecidable, so the field instance uses classical
+choice, but every coefficient is computable. Rational exponents (the full
+Levi-Civita field) are the next step. `Fast` and the analysis modules compute
+in that field with explicit truncation.
 
 The proofs reduce every law to an identity of finite sums: addition is additive
 in the weighted sum `Σ coeff · g(exp)`, multiplication is a convolution, and the

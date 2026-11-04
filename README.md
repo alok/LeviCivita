@@ -136,9 +136,32 @@ example : Lean.Grind.OrderedRing Puiseux := inferInstance
 ```
 
 `Puiseux` is the part of the Levi-Civita field whose exponents have a common
-denominator. The full field also allows exponent sequences like `1 − 1/n` with
-unbounded denominators. `Fast` and the analysis modules compute in that full
-field with explicit truncation.
+denominator.
+
+### The full field: `LeviCivitaField`
+
+`LeviCivita.Completion` builds the Cauchy completion of any linearly ordered
+field, generically: Cauchy sequences (measured by the field's own order) modulo
+null sequences. It proves the completion is a linearly ordered field containing
+the original one as a dense ordered subfield (`const_lt`, `tendsto_mk`).
+`LeviCivitaField := Completion Puiseux` is the Levi-Civita field over `ℚ`:
+series with left-finite rational support, unbounded denominators allowed. (The
+Puiseux series are dense in it, and in the Puiseux field the order topology is
+the valuation topology.)
+
+```lean
+import LeviCivita.Completion
+open LeviCivita
+
+noncomputable example : Lean.Grind.Field LeviCivitaField := inferInstance
+example : Lean.Grind.OrderedRing LeviCivitaField := inferInstance
+#check LeviCivitaField.root_pow   -- (ε^{1/N})^N = ε
+```
+
+With rational coefficients the field is **not** real closed (`x² = 2` has no
+solution), so there is no real-closedness theorem here; that needs real
+coefficients. `Fast` and the analysis modules compute in the field with
+explicit truncation.
 
 The proofs reduce every law to an identity of finite sums: addition is additive
 in the weighted sum `Σ coeff · g(exp)`, multiplication is a convolution, and the

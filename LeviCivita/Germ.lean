@@ -42,8 +42,8 @@ instance : Sub Germ := ⟨fun a b => ⟨a.val - b.val⟩⟩
 instance : Neg Germ := ⟨fun a => ⟨-a.val⟩⟩
 instance : Mul Germ := ⟨fun a b => cut (a.val * b.val)⟩
 
-/-- Inverse to the precision a germ keeps. -/
-@[inline] def inv (a : Germ) : Germ := cut ((invertTo a.val 2.0).getD 0)
+/-- Inverse to the precision a germ keeps; `undefined` at `0`, as for `RealLike LC`. -/
+@[inline] def inv (a : Germ) : Germ := cut ((invertTo a.val 2.0).getD undefined)
 
 instance : Div Germ := ⟨fun a b => a * inv b⟩
 
@@ -60,7 +60,7 @@ lost, then cut). Infinite input is `undefined`. -/
 instance : RealLike Germ where
   ofFloat x := ⟨FastLC.ofFloat x⟩
   inv := inv
-  sqrt a := cut (rpow a.val 0.5 2.0)
+  sqrt a := if signum a.val < 0 then ⟨undefined⟩ else cut (rpow a.val 0.5 2.0)
   abs a := if signum a.val < 0 then -a else a
   max a b := if lt a b then b else a
   min a b := if lt b a then b else a
@@ -69,6 +69,7 @@ instance : RealLike Germ where
   log := lift Float.log (fun x => 1.0 / x) (fun x => -1.0 / (x * x))
   sin := lift Float.sin Float.cos (fun x => -Float.sin x)
   cos := lift Float.cos (fun x => -Float.sin x) (fun x => -Float.cos x)
+  atan := lift Float.atan (fun x => 1.0 / (1.0 + x * x)) (fun x => -2.0 * x / ((1.0 + x * x) * (1.0 + x * x)))
 
 /-- Value and exact gradient of `f` at `x` in one evaluation on germs (the
 seeding of `FastLC.valueAndGrad`). -/

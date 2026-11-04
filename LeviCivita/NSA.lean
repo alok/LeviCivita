@@ -84,9 +84,10 @@ and on Levi-Civita numbers alike; see "Transfer" in the module docs. -/
 class RealLike (α : Type) extends Add α, Sub α, Mul α, Neg α, Div α where
   /-- Embed a real. -/
   ofFloat : Float → α
-  /-- Multiplicative inverse. -/
+  /-- Multiplicative inverse. Undefined at `0` (`1/0 = ∞` for `Float`, `undefined`
+  in the field), so that `*f` has the same domain as `f`. -/
   inv : α → α
-  /-- Square root (`0` for negative elements of the field, NaN for negative Floats). -/
+  /-- Square root. Undefined (NaN) below `0`, at `Float` and in the field alike. -/
   sqrt : α → α
   /-- Absolute value. -/
   abs : α → α
@@ -104,6 +105,8 @@ class RealLike (α : Type) extends Add α, Sub α, Mul α, Neg α, Div α where
   sin : α → α
   /-- Cosine. -/
   cos : α → α
+  /-- Arctangent. -/
+  atan : α → α
 
 instance : RealLike Float where
   ofFloat x := x
@@ -117,11 +120,17 @@ instance : RealLike Float where
   log := Float.log
   sin := Float.sin
   cos := Float.cos
+  atan := Float.atan
 
+/-- The natural extension of a function's *domain* as well as its values: where
+`f` is undefined at a real (`1/0`, `√−1`, `log 0`), `*f` is `undefined` there
+too, rather than the total-function conventions of `FastLC` (`x⁻¹ = 0` at `0`,
+`sqrt = 0` below `0`). So `st?` is `none` exactly where `f` has no real value. -/
 instance : RealLike LC where
   ofFloat := FastLC.ofFloat
-  inv x := x⁻¹
-  sqrt x := FastLC.sqrt x
+  inv x := if x.terms.isEmpty then undefined else x⁻¹
+  div x y := if y.terms.isEmpty then undefined else x * y⁻¹
+  sqrt x := if signum x < 0 then undefined else FastLC.sqrt x
   abs := FastLC.abs
   max := Max.max
   min := Min.min
@@ -130,6 +139,7 @@ instance : RealLike LC where
   log := FastLC.log
   sin := FastLC.sin
   cos := FastLC.cos
+  atan := FastLC.atan
 
 /-- A real function together with its natural extension: `run` at `Float` is
 `f`, at `LC` it is `*f`. Build one as `⟨fun x => x * x - RealLike.ofFloat 2⟩`. -/
@@ -149,12 +159,16 @@ namespace Ext
 @[inline] def close (a b : Float) (tol : Float) : Bool :=
   (a - b).abs ≤ tol * (1.0 + a.abs + b.abs)
 
-/-- `*f` agrees with `f` on the given reals and maps them to reals: the
-defining property of a natural extension, checked pointwise. -/
+/-- `*f` agrees with `f` on the given reals: where `f x` is a real, `*f x` is
+that real (a standard element); where `f x` is NaN or infinite (`x` outside the
+domain), `*f x` is undefined or infinite too. The defining property of a natural
+extension, checked pointwise. -/
 def extendsStd (F : Ext) (xs : List Float) (tol : Float := 1e-12) : Bool :=
   xs.all fun x =>
     let y := F.star (FastLC.ofFloat x)
-    isStandard y && isDefined y && close (FastLC.std y) (F.std x) tol
+    let fx := F.std x
+    if fx.isNaN || fx.isInf then (st? y).isNone
+    else isStandard y && isDefined y && close (FastLC.std y) fx tol
 
 /-- `lim_{t→x⁺} f t = st *f(x + ε)`. -/
 def limitRight? (F : Ext) (x : Float) : Option Float := st? (F.star (FastLC.ofFloat x + epsilon))

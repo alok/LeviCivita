@@ -20,7 +20,8 @@ standard `N`, so by transfer it holds for a hyperfinite `N`. Evaluating it at
 Its standard part is the integral. The infinitesimal tail is the exact error of
 the rule, so the Euler–Maclaurin coefficients can be read off rather than derived.
 For the left rule, `c₁ = −(b − a)(f(b) − f(a))/2`. For the midpoint rule (`θ = ½`)
-`c₁ = 0` and `c₂ = −(b − a)²(f'(b) − f'(a))/24`.
+`c₁ = 0` and `c₂ = −(b − a)²(f'(b) − f'(a))/24`; for the trapezoid rule
+(`trapezoidSum`) `c₁ = 0` and `c₂ = +(b − a)²(f'(b) − f'(a))/12`.
 
 At a standard `N` the same closed form must equal the plain finite sum; `lake test`
 checks that this is so.
@@ -87,6 +88,12 @@ def riemannSum (p : Poly) (a b N : LC) (θ : Float := 0) : LC :=
     (List.range (j + 1)).foldl (fun acc m =>
       acc + smul (p.coeffs[j]! * (choose j m).toFloat) (a' ^ (j - m) * h ^ (m + 1) * powerSum m N))
       acc) 0
+
+/-- The trapezoid rule `Σ_{k<N} (p(a + kh) + p(a + (k+1)h))/2 · h`, the mean of
+the left (`θ = 0`) and right (`θ = 1`) sums. Its error starts at `ε²`:
+`+(b − a)²(p'(b) − p'(a))/12 · ε²`, twice the midpoint rule's and of opposite sign. -/
+def trapezoidSum (p : Poly) (a b N : LC) : LC :=
+  smul 0.5 (riemannSum p a b N 0 + riemannSum p a b N 1)
 
 /-- The same sum by brute force, for a standard number of steps. -/
 def riemannSumDirect (p : Poly) (a b : Float) (N : Nat) (θ : Float := 0) : Float :=

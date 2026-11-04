@@ -156,7 +156,15 @@ open LeviCivita
 noncomputable example : Lean.Grind.Field LeviCivitaField := inferInstance
 example : Lean.Grind.OrderedRing LeviCivitaField := inferInstance
 #check LeviCivitaField.root_pow   -- (ε^{1/N})^N = ε
+#check LeviCivitaField.complete   -- every Cauchy sequence converges
 ```
+
+**Cauchy-completeness.** `Completion.complete` proves that the completion of any
+ordered field with a positive null sequence is Cauchy-complete (diagonal
+argument: approximate `x k` within `δ k` by a constant and take the limit of the
+constants). `NullSeq.puiseux_hasNullSeq` shows `εᵏ` is such a sequence in the
+Puiseux field (every positive Puiseux series exceeds some `εᵏ`), so
+`LeviCivitaField.complete` holds outright.
 
 With rational coefficients the field is **not** real closed (`x² = 2` has no
 solution), so there is no real-closedness theorem here; that needs real

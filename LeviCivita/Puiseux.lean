@@ -738,7 +738,7 @@ theorem ofL_lt {x y : Laurent} : ofL x < ofL y ↔ x < y := by
 private theorem mk_mul_same (N : Nat) (hN : 0 < N) (x y : Laurent) :
     mk N hN (x * y) = mk N hN x * mk N hN y := by rw [mk_mul]; pnorm
 
-private theorem mk_pow (N : Nat) (hN : 0 < N) (x : Laurent) (n : Nat) :
+theorem mk_pow (N : Nat) (hN : 0 < N) (x : Laurent) (n : Nat) :
     mk N hN (x ^ n) = mk N hN x ^ n := by
   induction n with
   | zero => show mk N hN 1 = mk 1 one_pos 1; pnorm

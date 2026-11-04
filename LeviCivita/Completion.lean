@@ -725,6 +725,109 @@ theorem complete (hF : HasNullSeq F) (x : Nat → Completion F) (hx : IsCauchy x
 
 end Completion
 
+/-! ## `εᵏ` is a null sequence in the Puiseux field -/
+
+namespace NullSeq
+
+open Series Series.PS Frac Lean.Grind
+
+private theorem laurent_eps_pow (n : Nat) : Laurent.eps ^ n = ofRing (X ^ n) := by
+  induction n with
+  | zero => rfl
+  | succ n ih =>
+    show Laurent.eps ^ n * Laurent.eps = ofRing (X ^ n * X)
+    rw [ih, ofRing_mul]; rfl
+
+/-- In `ℚ((ε))`, every positive element exceeds some power of `ε`. -/
+theorem laurent_eps_pow_lt {x : Laurent} (hx : 0 < x) : ∃ j : Nat, Laurent.eps ^ j < x := by
+  induction x using Frac.ind with
+  | h a b hb =>
+  have hab : PS.IsPos (a * b) := by
+    have e : mk a b hb - 0 = mk a b hb := by grind
+    rw [Frac.lt_def, e, isPos_mk, PS.lt_def] at hx
+    have e2 : a * b - 0 = a * b := by grind
+    rwa [e2] at hx
+  obtain ⟨p, hz, hp⟩ := hab
+  refine ⟨p + 1, ?_⟩
+  rw [laurent_eps_pow, Frac.lt_def]
+  unfold ofRing; show Frac.IsPos (Frac.mk a b hb + -Frac.mk (X ^ (p + 1)) 1 _)
+  rw [Frac.mk_neg, Frac.mk_add, isPos_mk, PS.lt_def]
+  have e : (a * 1 + -X ^ (p + 1) * b) * (b * 1) - 0 = a * b - X ^ (p + 1) * (b * b) := by grind
+  rw [e]
+  have hX : ∀ m, m < p + 1 → (X ^ (p + 1)).coeff m = 0 := fun m hm => by
+    rw [X_pow_coeff]; simp only [show m ≠ p + 1 by omega, ↓reduceIte]
+  have hlow := (mul_low (X ^ (p + 1)) (b * b) (p + 1) 0 hX (fun _ h => absurd h (Nat.not_lt_zero _))).1
+  refine ⟨p, fun m hm => ?_, ?_⟩
+  · rw [coeff_sub, hz m hm, hlow m (by omega)]; grind
+  · rw [coeff_sub, hlow p (by omega)]; grind
+
+private theorem pow_pos' {F : Type u} [Field F] [LE F] [LT F] [Std.IsLinearOrder F]
+    [Std.LawfulOrderLT F] [OrderedRing F] {e : F} (he : 0 < e) (n : Nat) : 0 < e ^ n := by
+  induction n with
+  | zero => rw [Semiring.pow_zero]; exact OrderedRing.zero_lt_one
+  | succ n ih =>
+    rw [Semiring.pow_succ]
+    have := OrderedRing.mul_lt_mul_of_pos_left he ih; grind
+
+/-- Powers of `0 < e < 1` decrease. -/
+private theorem pow_le_pow' {F : Type u} [Field F] [LE F] [LT F] [Std.IsLinearOrder F]
+    [Std.LawfulOrderLT F] [OrderedRing F] {e : F} (he : 0 < e) (he1 : e < 1) {j k : Nat}
+    (hjk : j ≤ k) : e ^ k ≤ e ^ j := by
+  induction k with
+  | zero => have : j = 0 := by omega
+            subst this; exact Std.le_refl _
+  | succ k ih =>
+    by_cases h : j = k + 1
+    · subst h; exact Std.le_refl _
+    · have ih := ih (by omega)
+      have hp := pow_pos' he k
+      have : e ^ k * e < e ^ k * 1 := OrderedRing.mul_lt_mul_of_pos_left he1 hp
+      rw [Semiring.pow_succ]; grind
+
+private theorem pow_mul' {F : Type u} [CommRing F] (a : F) (m n : Nat) :
+    (a ^ m) ^ n = a ^ (m * n) := by
+  induction n with
+  | zero => rw [Semiring.pow_zero, Nat.mul_zero, Semiring.pow_zero]
+  | succ n ih => rw [Semiring.pow_succ, ih, Nat.mul_succ, Semiring.pow_add]
+
+private theorem eps_lt_one : (Puiseux.eps : Puiseux) < 1 := by
+  have := Puiseux.root_lt_ofRat 1 (by decide) (q := 1) (by decide)
+  have e1 : Puiseux.root 1 (by decide) = Puiseux.eps := by
+    have := Puiseux.root_pow 1 (by decide); rwa [Semiring.pow_one] at this
+  have e2 : Puiseux.ofRat 1 = 1 := rfl
+  rwa [e1, e2] at this
+
+/-- **`εᵏ → 0` in the Puiseux field**: every positive element exceeds some `εᵏ`. -/
+theorem puiseux_eps_pow_lt {z : Puiseux} (hz : 0 < z) : ∃ j : Nat, Puiseux.eps ^ j < z := by
+  induction z using Puiseux.ind with
+  | h N hN x =>
+  have hx : 0 < x := by
+    have e : Puiseux.mk N hN x - 0 = Puiseux.mk N hN x := by grind
+    rw [Puiseux.lt_def, e, Puiseux.isPos_mk] at hz; exact hz
+  obtain ⟨j, hj⟩ := laurent_eps_pow_lt hx
+  refine ⟨j, ?_⟩
+  -- `εʲ = (ε^{1/N})^{N j} ≤ (ε^{1/N})ʲ < z`
+  have hr : Puiseux.root N hN ^ j < Puiseux.mk N hN x := by
+    unfold Puiseux.root; rw [← Puiseux.mk_pow, Puiseux.lt_def]
+    show Puiseux.IsPos (Puiseux.mk N hN x + -Puiseux.mk N hN (Laurent.eps ^ j))
+    rw [Puiseux.mk_neg, Puiseux.mk_add, Puiseux.isPos_mk]
+    have := (subL_pos hN).mpr (show 0 < x - Laurent.eps ^ j by grind)
+    rw [subL_sub] at this; rw [subL_neg]; grind
+  have hle : Puiseux.eps ^ j ≤ Puiseux.root N hN ^ j := by
+    rw [← Puiseux.root_pow N hN, pow_mul']
+    exact pow_le_pow' (Puiseux.root_pos N hN)
+      (by have := Puiseux.root_lt_ofRat N hN (q := 1) (by decide); exact this)
+      (Nat.le_mul_of_pos_left j hN)
+  grind
+
+theorem puiseux_hasNullSeq : Completion.HasNullSeq Puiseux := by
+  refine ⟨fun k => Puiseux.eps ^ k, fun k => pow_pos' Puiseux.eps_pos k, fun d hd => ?_⟩
+  obtain ⟨j, hj⟩ := puiseux_eps_pow_lt hd
+  exact ⟨j, fun k hk => by
+    have := pow_le_pow' Puiseux.eps_pos eps_lt_one hk; grind⟩
+
+end NullSeq
+
 /-! ## The Levi-Civita field -/
 
 open Series
@@ -758,6 +861,11 @@ theorem root_pow (N : Nat) (hN : 0 < N) : root N hN ^ N = eps := by
 theorem root_pos (N : Nat) (hN : 0 < N) : 0 < root N hN := const_lt.mpr (Puiseux.root_pos N hN)
 theorem root_lt_ofRat (N : Nat) (hN : 0 < N) {q : Rat} (hq : 0 < q) : root N hN < ofRat q :=
   const_lt.mpr (Puiseux.root_lt_ofRat N hN hq)
+
+/-- **The Levi-Civita field is Cauchy-complete**: every Cauchy sequence converges. -/
+theorem complete (x : Nat → LeviCivitaField) (hx : Cauchy.IsCauchy x) :
+    ∃ L, ∀ D, 0 < D → ∃ N, ∀ n, N ≤ n → Cauchy.Near (x n) L D :=
+  Completion.complete NullSeq.puiseux_hasNullSeq x hx
 
 /-- `grind` reasons in the Levi-Civita field. -/
 example (x : LeviCivitaField) (h : 0 < x) : 0 < x + eps := by have := eps_pos; grind

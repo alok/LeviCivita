@@ -3,49 +3,59 @@ import LeviCivita.Series
 /-!
 # Puiseux series: rational exponents
 
-The Laurent field `ℚ((ε))` only has integer exponents. Puiseux series allow
+The Laurent field `K((ε))` only has integer exponents. Puiseux series allow
 every rational exponent with a bounded denominator: an element is a Laurent
 series in `ε^{1/N}` for some `N ≥ 1`. We build them by gluing the copies
-`ℚ((ε^{1/N}))` along the substitutions `ε^{1/N} ↦ (ε^{1/NM})^M`.
+`K((ε^{1/N}))` along the substitutions `ε^{1/N} ↦ (ε^{1/NM})^M`.
 
 * `PS.sub k`: the substitution `ε ↦ εᵏ` on power series. It is an injective
   ring map that preserves the order.
 * `Frac.map`: any such map extends to the fields of fractions, so `subL k` acts
-  on `Laurent`.
-* `Puiseux`: pairs `(N, x)` meaning `x(ε^{1/N})`, with `(N, x) ~ (M, y)` iff
+  on `Laurent K`.
+* `Puiseux K`: pairs `(N, x)` meaning `x(ε^{1/N})`, with `(N, x) ~ (M, y)` iff
   `x(ε^{M}) = y(ε^{N})`. An ordered field (`Lean.Grind.Field`,
   `Lean.Grind.OrderedRing`).
 * `Puiseux.root N`, the series `ε^{1/N}`, satisfies `root N ^ N = ε`, and it is a
   positive infinitesimal.
 
-`Puiseux` is the subfield of the Levi-Civita field made of the series whose
+`Puiseux K` is the subfield of the Levi-Civita field made of the series whose
 exponents have bounded denominators. The full Levi-Civita field also allows
 exponent sequences such as `1 − 1/n` with growing denominators.
 -/
 
+set_option linter.unusedSectionVars false
+
 namespace LeviCivita.Series
+
+open Lean.Grind
+
+attribute [local instance] Semiring.natCast Ring.intCast
+attribute [local instance high] Semiring.ofNat
+
+variable {K : Type u} [Field K] [LE K] [LT K] [Std.IsLinearOrder K] [Std.LawfulOrderLT K]
+  [OrderedRing K]
 
 namespace PS
 
 /-! ## Substitution `ε ↦ εᵏ` -/
 
 /-- `(sub k a)(ε) = a(εᵏ)`. -/
-def sub (k : Nat) (a : PS) : PS := ⟨fun n => if n % k = 0 then a.coeff (n / k) else 0⟩
+def sub (k : Nat) (a : PS K) : PS K := ⟨fun n => if n % k = 0 then a.coeff (n / k) else 0⟩
 
-theorem sub_coeff_mul {k : Nat} (hk : 0 < k) (a : PS) (m : Nat) :
+theorem sub_coeff_mul {k : Nat} (hk : 0 < k) (a : PS K) (m : Nat) :
     (sub k a).coeff (k * m) = a.coeff m := by
   simp [sub, Nat.mul_mod_right, Nat.mul_div_cancel_left m hk]
 
-theorem sub_coeff_ne {k : Nat} (a : PS) {n : Nat} (h : n % k ≠ 0) : (sub k a).coeff n = 0 := by
+theorem sub_coeff_ne {k : Nat} (a : PS K) {n : Nat} (h : n % k ≠ 0) : (sub k a).coeff n = 0 := by
   simp [sub, h]
 
-theorem sub_add (k : Nat) (a b : PS) : sub k (a + b) = sub k a + sub k b := by
+theorem sub_add (k : Nat) (a b : PS K) : sub k (a + b) = sub k a + sub k b := by
   ext n; simp only [sub, coeff_add]; split <;> grind
 
-theorem sub_neg (k : Nat) (a : PS) : sub k (-a) = -sub k a := by
+theorem sub_neg (k : Nat) (a : PS K) : sub k (-a) = -sub k a := by
   ext n; simp only [sub, coeff_neg]; split <;> grind
 
-theorem sub_C {k : Nat} (_hk : 0 < k) (c : Rat) : sub k (C c) = C c := by
+theorem sub_C {k : Nat} (_hk : 0 < k) (c : K) : sub k (C c) = C c := by
   ext n; simp only [sub, coeff_C]
   by_cases h : n % k = 0
   · simp only [h, ↓reduceIte]
@@ -59,22 +69,22 @@ theorem sub_C {k : Nat} (_hk : 0 < k) (c : Rat) : sub k (C c) = C c := by
     have : n ≠ 0 := by intro h0; subst h0; simp at h
     simp [this]
 
-theorem sub_one {k : Nat} (hk : 0 < k) : sub k 1 = 1 := sub_C hk 1
-theorem sub_zero' {k : Nat} (hk : 0 < k) : sub k 0 = 0 := sub_C hk 0
+theorem sub_one {k : Nat} (hk : 0 < k) : sub k (1 : PS K) = 1 := sub_C hk 1
+theorem sub_zero' {k : Nat} (hk : 0 < k) : sub k (0 : PS K) = 0 := sub_C hk 0
 
 /-- Split a sum into a prefix and a block. -/
-theorem S_split (a b : Nat) (f : Nat → Rat) : S (a + b) f = S a f + S b (fun i => f (a + i)) := by
+theorem S_split (a b : Nat) (f : Nat → K) : S (a + b) f = S a f + S b (fun i => f (a + i)) := by
   induction b with
   | zero => simp <;> grind
   | succ b ih => rw [← Nat.add_assoc, S_succ, ih, S_succ]; grind
 
 /-- A sum supported on multiples of `k`. -/
-theorem S_sparse {k : Nat} (hk : 0 < k) (m : Nat) (f : Nat → Rat)
+theorem S_sparse {k : Nat} (hk : 0 < k) (m : Nat) (f : Nat → K)
     (hf : ∀ j, j % k ≠ 0 → f j = 0) : S (k * m + 1) f = S (m + 1) (fun i => f (k * i)) := by
   induction m with
   | zero => simp [S_succ]
   | succ m ih =>
-    rw [show k * (m + 1) + 1 = (k * m + 1) + k by rw [Nat.mul_succ]; omega, S_split, ih, S_succ]
+    rw [show k * (m + 1) + 1 = (k * m + 1) + k by simp only [Nat.mul_add, Nat.mul_one]; omega, S_split, ih, S_succ]
     congr 1
     rw [S_eq_single (j := k - 1) (by omega)]
     · congr 1; rw [Nat.mul_succ]; omega
@@ -84,7 +94,7 @@ theorem S_sparse {k : Nat} (hk : 0 < k) (m : Nat) (f : Nat → Rat)
         Nat.mod_eq_of_lt (by omega)]
       omega
 
-theorem S_sparse' {k : Nat} (hk : 0 < k) (n : Nat) (f : Nat → Rat)
+theorem S_sparse' {k : Nat} (hk : 0 < k) (n : Nat) (f : Nat → K)
     (hf : ∀ j, j % k ≠ 0 → f j = 0) : S (n + 1) f = S (n / k + 1) (fun i => f (k * i)) := by
   have e := Nat.mod_add_div n k
   have hr := Nat.mod_lt n hk
@@ -100,7 +110,7 @@ private theorem sub_mod {k j n : Nat} (hjn : j ≤ n) (hj : j % k = 0) : (n - j)
   conv => rhs; rw [show n = (n - j) + k * (j / k) by omega]
   rw [Nat.add_comm, Nat.mul_add_mod]
 
-theorem sub_mul {k : Nat} (hk : 0 < k) (a b : PS) : sub k (a * b) = sub k a * sub k b := by
+theorem sub_mul {k : Nat} (hk : 0 < k) (a b : PS K) : sub k (a * b) = sub k a * sub k b := by
   ext n
   rw [coeff_mul]
   by_cases hn : n % k = 0
@@ -117,7 +127,7 @@ theorem sub_mul {k : Nat} (hk : 0 < k) (a b : PS) : sub k (a * b) = sub k a * su
     · rw [sub_coeff_ne b (n := n - j) (by rw [sub_mod (by omega) hjk]; exact hn)]; grind
     · rw [sub_coeff_ne a hjk]; grind
 
-theorem sub_sub {a b : Nat} (ha : 0 < a) (hb : 0 < b) (x : PS) :
+theorem sub_sub {a b : Nat} (ha : 0 < a) (hb : 0 < b) (x : PS K) :
     sub a (sub b x) = sub (a * b) x := by
   ext n
   by_cases h : n % (a * b) = 0
@@ -136,10 +146,10 @@ theorem sub_sub {a b : Nat} (ha : 0 < a) (hb : 0 < b) (x : PS) :
       rw [← e, ← e2, ← Nat.mul_assoc, Nat.mul_mod_right]
     · exact sub_coeff_ne _ h1
 
-theorem sub_inj {k : Nat} (hk : 0 < k) {a b : PS} (h : sub k a = sub k b) : a = b := by
+theorem sub_inj {k : Nat} (hk : 0 < k) {a b : PS K} (h : sub k a = sub k b) : a = b := by
   ext m; rw [← sub_coeff_mul hk a, ← sub_coeff_mul hk b, h]
 
-theorem sub_isPos {k : Nat} (hk : 0 < k) (a : PS) : IsPos (sub k a) ↔ IsPos a := by
+theorem sub_isPos {k : Nat} (hk : 0 < k) (a : PS K) : IsPos (sub k a) ↔ IsPos a := by
   constructor
   · rintro ⟨p, hp0, hp⟩
     have hpk : p % k = 0 := Classical.byContradiction fun h => by rw [sub_coeff_ne a h] at hp; grind
@@ -161,24 +171,24 @@ theorem sub_isPos {k : Nat} (hk : 0 < k) (a : PS) : IsPos (sub k a) ↔ IsPos a 
       omega
     · exact sub_coeff_ne a h
 
-theorem sub_lt {k : Nat} (hk : 0 < k) {a b : PS} : sub k a < sub k b ↔ a < b := by
+theorem sub_lt {k : Nat} (hk : 0 < k) {a b : PS K} : sub k a < sub k b ↔ a < b := by
   have : sub k (b - a) = sub k b - sub k a := by
     show sub k (b + -a) = sub k b + -sub k a; rw [sub_add, sub_neg]
   rw [lt_def, lt_def, ← this, sub_isPos hk]
 
-theorem X_pow_coeff (N n : Nat) : (X ^ N).coeff n = if n = N then 1 else 0 := by
+theorem X_pow_coeff (N n : Nat) : ((X : PS K) ^ N).coeff n = if n = N then 1 else 0 := by
   induction N generalizing n with
-  | zero => show (C 1).coeff n = _; simp
+  | zero => show (C (1 : K)).coeff n = _; simp
   | succ N ih =>
-    show (X ^ N * X).coeff n = _
+    show ((X : PS K) ^ N * X).coeff n = _
     rw [PS.mul_comm, coeff_mul]
     cases n with
     | zero => simp [S_succ] <;> grind
     | succ n =>
-      rw [S_eq_single (j := 1) (by omega) (fun i hi hi1 => by simp [hi1])]
-      simp [ih]
+      rw [S_eq_single (j := 1) (by omega) (fun i hi hi1 => by simp [hi1]; grind)]
+      simp [ih]; split <;> grind
 
-theorem sub_X {k : Nat} (hk : 0 < k) : sub k X = X ^ k := by
+theorem sub_X {k : Nat} (hk : 0 < k) : sub k (X : PS K) = (X : PS K) ^ k := by
   ext n; rw [X_pow_coeff]
   by_cases h : n % k = 0
   · have e := Nat.mod_add_div n k
@@ -194,7 +204,7 @@ theorem sub_X {k : Nat} (hk : 0 < k) : sub k X = X ^ k := by
     have : n ≠ k := by intro h2; subst h2; simp at h
     simp [this]
 
-theorem sub_one_id (a : PS) : sub 1 a = a := by
+theorem sub_one_id (a : PS K) : sub 1 a = a := by
   ext n; simp [sub, Nat.mod_one]
 
 end PS
@@ -302,8 +312,14 @@ namespace LeviCivita.Series
 
 open PS Frac Lean.Grind
 
+attribute [local instance] Semiring.natCast Ring.intCast
+attribute [local instance high] Semiring.ofNat
+
+variable {K : Type u} [Field K] [LE K] [LT K] [Std.IsLinearOrder K] [Std.LawfulOrderLT K]
+  [OrderedRing K]
+
 /-- `ε ↦ εᵏ` as an embedding of power series, for `k > 0`. -/
-def subEmb (k : Nat) (hk : 0 < k) : Emb PS PS where
+def subEmb (k : Nat) (hk : 0 < k) : Emb (PS K) (PS K) where
   f := sub k
   map_add := sub_add k
   map_mul := sub_mul hk
@@ -314,66 +330,66 @@ def subEmb (k : Nat) (hk : 0 < k) : Emb PS PS where
 
 /-- `(subL k x)(ε) = x(εᵏ)` on Laurent series. For `k = 0` it is the identity
 (a junk value that keeps the ring-map laws unconditional). -/
-def subL (k : Nat) (x : Laurent) : Laurent := if hk : 0 < k then map (subEmb k hk) x else x
+def subL (k : Nat) (x : Laurent K) : Laurent K := if hk : 0 < k then map (subEmb k hk) x else x
 
-theorem subL_add (k : Nat) (x y : Laurent) : subL k (x + y) = subL k x + subL k y := by
+theorem subL_add (k : Nat) (x y : Laurent K) : subL k (x + y) = subL k x + subL k y := by
   unfold subL; split
   · exact map_add _ x y
   · rfl
-theorem subL_mul (k : Nat) (x y : Laurent) : subL k (x * y) = subL k x * subL k y := by
+theorem subL_mul (k : Nat) (x y : Laurent K) : subL k (x * y) = subL k x * subL k y := by
   unfold subL; split
   · exact map_mul _ x y
   · rfl
-theorem subL_neg (k : Nat) (x : Laurent) : subL k (-x) = -subL k x := by
+theorem subL_neg (k : Nat) (x : Laurent K) : subL k (-x) = -subL k x := by
   unfold subL; split
   · exact map_neg _ x
   · rfl
-theorem subL_inv (k : Nat) (x : Laurent) : subL k x⁻¹ = (subL k x)⁻¹ := by
+theorem subL_inv (k : Nat) (x : Laurent K) : subL k x⁻¹ = (subL k x)⁻¹ := by
   unfold subL; split
   · exact map_inv _ x
   · rfl
-theorem subL_one (k : Nat) : subL k 1 = 1 := by
+theorem subL_one (k : Nat) : subL k (1 : Laurent K) = 1 := by
   unfold subL; split
   · exact map_one _
   · rfl
-theorem subL_zero (k : Nat) : subL k 0 = 0 := by
+theorem subL_zero (k : Nat) : subL k (0 : Laurent K) = 0 := by
   unfold subL; split
   · exact map_zero _
   · rfl
-theorem subL_sub (k : Nat) (x y : Laurent) : subL k (x - y) = subL k x - subL k y := by
+theorem subL_sub (k : Nat) (x y : Laurent K) : subL k (x - y) = subL k x - subL k y := by
   show subL k (x + -y) = subL k x + -subL k y; rw [subL_add, subL_neg]
 
-theorem subL_ofRing (k : Nat) (hk : 0 < k) (a : PS) : subL k (ofRing a) = ofRing (sub k a) := by
+theorem subL_ofRing (k : Nat) (hk : 0 < k) (a : PS K) : subL k (ofRing a) = ofRing (sub k a) := by
   unfold subL; simp only [hk, ↓reduceDIte]
   unfold ofRing; rw [map_mk, mk_eq]; simp only [subEmb, sub_one hk]
 
-theorem subL_subL {a b : Nat} (ha : 0 < a) (hb : 0 < b) (x : Laurent) :
+theorem subL_subL {a b : Nat} (ha : 0 < a) (hb : 0 < b) (x : Laurent K) :
     subL a (subL b x) = subL (a * b) x := by
   have hab := Nat.mul_pos ha hb
   unfold subL; simp only [ha, hb, hab, ↓reduceDIte]
   induction x using ind with | h p q hq =>
   rw [map_mk, map_mk, map_mk]; simp only [subEmb, sub_sub ha hb]
 
-theorem subL_one_id (x : Laurent) : subL 1 x = x := by
+theorem subL_one_id (x : Laurent K) : subL 1 x = x := by
   have h1 : 0 < 1 := by decide
   unfold subL; simp only [h1, ↓reduceDIte]
   induction x using ind with | h p q hq =>
   rw [map_mk]; simp only [subEmb, sub_one_id]
 
-theorem subL_inj {k : Nat} (hk : 0 < k) {x y : Laurent} (h : subL k x = subL k y) : x = y := by
+theorem subL_inj {k : Nat} (hk : 0 < k) {x y : Laurent K} (h : subL k x = subL k y) : x = y := by
   unfold subL at h; simp only [hk, ↓reduceDIte] at h; exact map_inj _ h
 
-theorem subL_lt {k : Nat} (hk : 0 < k) {x y : Laurent} : subL k x < subL k y ↔ x < y := by
+theorem subL_lt {k : Nat} (hk : 0 < k) {x y : Laurent K} : subL k x < subL k y ↔ x < y := by
   unfold subL; simp only [hk, ↓reduceDIte]
   exact map_lt _ (fun a => by
     have := sub_lt hk (a := 0) (b := a)
     rw [sub_zero' hk] at this; exact this)
 
-theorem subL_pos {k : Nat} (hk : 0 < k) {x : Laurent} : 0 < subL k x ↔ 0 < x := by
+theorem subL_pos {k : Nat} (hk : 0 < k) {x : Laurent K} : 0 < subL k x ↔ 0 < x := by
   have := subL_lt hk (x := 0) (y := x); rw [subL_zero] at this; exact this
 
 /-- Combine nested substitutions after reassociating the levels. -/
-theorem subL_subL' {a b c : Nat} (ha : 0 < a) (hb : 0 < b) (h : a * b = c) (x : Laurent) :
+theorem subL_subL' {a b c : Nat} (ha : 0 < a) (hb : 0 < b) (h : a * b = c) (x : Laurent K) :
     subL a (subL b x) = subL c x := by rw [subL_subL ha hb, h]
 
 end LeviCivita.Series
@@ -384,16 +400,23 @@ namespace LeviCivita.Series
 
 open PS Frac Lean.Grind
 
+attribute [local instance] Semiring.natCast Ring.intCast
+attribute [local instance high] Semiring.ofNat
+
+variable {K : Type u} [Field K] [LE K] [LT K] [Std.IsLinearOrder K] [Std.LawfulOrderLT K]
+  [OrderedRing K]
+
 /-- Positivity of products of positive levels. -/
 macro "npos" : tactic => `(tactic| (repeat (first | assumption | decide | apply Nat.mul_pos)))
 
 /-- `(N, x)` stands for `x(ε^{1/N})`. -/
-def PPair := { p : Nat × Laurent // 0 < p.1 }
+def PPair (K : Type u) [Field K] [LE K] [LT K] [Std.IsLinearOrder K] [Std.LawfulOrderLT K]
+    [OrderedRing K] := { p : Nat × Laurent K // 0 < p.1 }
 
 /-- `x(ε^{1/N}) = y(ε^{1/M})` iff `x(ε^M) = y(ε^N)`. -/
-def PRel (p q : PPair) : Prop := subL q.val.1 p.val.2 = subL p.val.1 q.val.2
+def PRel (p q : PPair K) : Prop := subL q.val.1 p.val.2 = subL p.val.1 q.val.2
 
-theorem prel_equiv : Equivalence PRel where
+theorem prel_equiv : Equivalence (PRel (K := K)) where
   refl _ := rfl
   symm h := h.symm
   trans {p q r} h1 h2 := by
@@ -406,32 +429,33 @@ theorem prel_equiv : Equivalence PRel where
       Nat.mul_comm K N, ← subL_subL hN hK, h2, subL_subL hN hM, Nat.mul_comm N M,
       ← subL_subL hM hN]
 
-instance psetoid : Setoid PPair := ⟨PRel, prel_equiv⟩
+instance psetoid : Setoid (PPair K) := ⟨PRel, prel_equiv⟩
 
 /-- Puiseux series: Laurent series in `ε^{1/N}` for some `N ≥ 1`. -/
-def Puiseux := Quotient psetoid
+def Puiseux (K : Type u) [Field K] [LE K] [LT K] [Std.IsLinearOrder K] [Std.LawfulOrderLT K]
+    [OrderedRing K] := Quotient (psetoid (K := K))
 
 namespace Puiseux
 
 noncomputable section
 
 /-- `x(ε^{1/N})`. -/
-def mk (N : Nat) (hN : 0 < N) (x : Laurent) : Puiseux := Quotient.mk _ ⟨(N, x), hN⟩
+def mk (N : Nat) (hN : 0 < N) (x : Laurent K) : Puiseux K := Quotient.mk _ ⟨(N, x), hN⟩
 
-theorem mk_eq {N M : Nat} {hN : 0 < N} {hM : 0 < M} {x y : Laurent} :
+theorem mk_eq {N M : Nat} {hN : 0 < N} {hM : 0 < M} {x y : Laurent K} :
     mk N hN x = mk M hM y ↔ subL M x = subL N y :=
   ⟨Quotient.exact, fun h => Quotient.sound h⟩
 
-theorem ind {P : Puiseux → Prop} (h : ∀ N hN x, P (mk N hN x)) (z : Puiseux) : P z :=
+theorem ind {P : Puiseux K → Prop} (h : ∀ N hN x, P (mk N hN x)) (z : Puiseux K) : P z :=
   Quotient.ind (fun ⟨⟨N, x⟩, hN⟩ => h N hN x) z
 
 /-- Rescale one side of a relation `subL N' x = subL N x'`. -/
-theorem scale {N N' : Nat} (hN : 0 < N) (hN' : 0 < N') {x x' : Laurent}
+theorem scale {N N' : Nat} (hN : 0 < N) (hN' : 0 < N') {x x' : Laurent K}
     (h : subL N' x = subL N x') {c d e : Nat} (he : 0 < e) (hc : c = e * N') (hd : d = e * N) :
     subL c x = subL d x' := by
   subst hc hd; rw [← subL_subL he hN', h, subL_subL he hN]
 
-private theorem add_congr (p q p' q' : PPair) (h1 : p ≈ p') (h2 : q ≈ q') :
+private theorem add_congr (p q p' q' : PPair K) (h1 : p ≈ p') (h2 : q ≈ q') :
     mk (p.val.1 * q.val.1) (Nat.mul_pos p.property q.property)
         (subL q.val.1 p.val.2 + subL p.val.1 q.val.2) =
       mk (p'.val.1 * q'.val.1) (Nat.mul_pos p'.property q'.property)
@@ -447,7 +471,7 @@ private theorem add_congr (p q p' q' : PPair) (h1 : p ≈ p') (h2 : q ≈ q') :
   rw [scale hN hN' h1 (e := M' * M) (by npos) (by grind) (by grind : N * M * M' = M' * M * N),
     scale hM hM' h2 (e := N' * N) (by npos) (by grind) (by grind : N * M * N' = N' * N * M)]
 
-private theorem mul_congr (p q p' q' : PPair) (h1 : p ≈ p') (h2 : q ≈ q') :
+private theorem mul_congr (p q p' q' : PPair K) (h1 : p ≈ p') (h2 : q ≈ q') :
     mk (p.val.1 * q.val.1) (Nat.mul_pos p.property q.property)
         (subL q.val.1 p.val.2 * subL p.val.1 q.val.2) =
       mk (p'.val.1 * q'.val.1) (Nat.mul_pos p'.property q'.property)
@@ -463,13 +487,13 @@ private theorem mul_congr (p q p' q' : PPair) (h1 : p ≈ p') (h2 : q ≈ q') :
   rw [scale hN hN' h1 (e := M' * M) (by npos) (by grind) (by grind : N * M * M' = M' * M * N),
     scale hM hM' h2 (e := N' * N) (by npos) (by grind) (by grind : N * M * N' = N' * N * M)]
 
-private theorem neg_congr (p p' : PPair) (h : p ≈ p') :
+private theorem neg_congr (p p' : PPair K) (h : p ≈ p') :
     mk p.val.1 p.property (-p.val.2) = mk p'.val.1 p'.property (-p'.val.2) := by
   obtain ⟨⟨N, x⟩, hN⟩ := p; obtain ⟨⟨N', x'⟩, hN'⟩ := p'
   have h : subL N' x = subL N x' := h
   rw [mk_eq, subL_neg, subL_neg, h]
 
-private theorem inv_congr (p p' : PPair) (h : p ≈ p') :
+private theorem inv_congr (p p' : PPair K) (h : p ≈ p') :
     mk p.val.1 p.property (p.val.2)⁻¹ = mk p'.val.1 p'.property (p'.val.2)⁻¹ := by
   obtain ⟨⟨N, x⟩, hN⟩ := p; obtain ⟨⟨N', x'⟩, hN'⟩ := p'
   have h : subL N' x = subL N x' := h
@@ -477,48 +501,48 @@ private theorem inv_congr (p p' : PPair) (h : p ≈ p') :
 
 private theorem one_pos : 0 < 1 := by decide
 
-instance : Add Puiseux := ⟨Quotient.lift₂ (fun p q => mk (p.val.1 * q.val.1)
+instance : Add (Puiseux K) := ⟨Quotient.lift₂ (fun p q => mk (p.val.1 * q.val.1)
   (Nat.mul_pos p.property q.property) (subL q.val.1 p.val.2 + subL p.val.1 q.val.2)) add_congr⟩
-instance : Mul Puiseux := ⟨Quotient.lift₂ (fun p q => mk (p.val.1 * q.val.1)
+instance : Mul (Puiseux K) := ⟨Quotient.lift₂ (fun p q => mk (p.val.1 * q.val.1)
   (Nat.mul_pos p.property q.property) (subL q.val.1 p.val.2 * subL p.val.1 q.val.2)) mul_congr⟩
-instance : Neg Puiseux := ⟨Quotient.lift (fun p => mk p.val.1 p.property (-p.val.2)) neg_congr⟩
-instance : Inv Puiseux := ⟨Quotient.lift (fun p => mk p.val.1 p.property (p.val.2)⁻¹) inv_congr⟩
-instance : Sub Puiseux := ⟨fun x y => x + -y⟩
-instance : Div Puiseux := ⟨fun x y => x * y⁻¹⟩
+instance : Neg (Puiseux K) := ⟨Quotient.lift (fun p => mk p.val.1 p.property (-p.val.2)) neg_congr⟩
+instance : Inv (Puiseux K) := ⟨Quotient.lift (fun p => mk p.val.1 p.property (p.val.2)⁻¹) inv_congr⟩
+instance : Sub (Puiseux K) := ⟨fun x y => x + -y⟩
+instance : Div (Puiseux K) := ⟨fun x y => x * y⁻¹⟩
 
 /-- The embedding of Laurent series (`N = 1`). -/
-def ofL (x : Laurent) : Puiseux := mk 1 one_pos x
+def ofL (x : Laurent K) : Puiseux K := mk 1 one_pos x
 
-instance : Zero Puiseux := ⟨ofL 0⟩
-instance : One Puiseux := ⟨ofL 1⟩
-instance : NatCast Puiseux := ⟨fun n => ofL n⟩
-instance : IntCast Puiseux := ⟨fun i => ofL i⟩
-instance : OfNat Puiseux n := ⟨ofL (OfNat.ofNat n)⟩
-instance : SMul Nat Puiseux := ⟨fun n x => (n : Puiseux) * x⟩
-instance : SMul Int Puiseux := ⟨fun i x => (i : Puiseux) * x⟩
+instance : Zero (Puiseux K) := ⟨ofL 0⟩
+instance : One (Puiseux K) := ⟨ofL 1⟩
+instance : NatCast (Puiseux K) := ⟨fun n => ofL n⟩
+instance : IntCast (Puiseux K) := ⟨fun i => ofL i⟩
+instance : OfNat (Puiseux K) n := ⟨ofL (OfNat.ofNat n)⟩
+instance : SMul Nat (Puiseux K) := ⟨fun n x => (n : Puiseux K) * x⟩
+instance : SMul Int (Puiseux K) := ⟨fun i x => (i : Puiseux K) * x⟩
 
 /-- Natural powers by repeated multiplication. -/
-def npow (x : Puiseux) : Nat → Puiseux
+def npow (x : Puiseux K) : Nat → Puiseux K
   | 0 => 1
   | n + 1 => npow x n * x
 
-instance : HPow Puiseux Nat Puiseux := ⟨npow⟩
+instance : HPow (Puiseux K) Nat (Puiseux K) := ⟨npow⟩
 
 /-- Integer powers. -/
-def zpow (x : Puiseux) : Int → Puiseux
+def zpow (x : Puiseux K) : Int → Puiseux K
   | .ofNat n => x ^ n
   | .negSucc n => (x ^ (n + 1))⁻¹
 
-instance : HPow Puiseux Int Puiseux := ⟨zpow⟩
+instance : HPow (Puiseux K) Int (Puiseux K) := ⟨zpow⟩
 
-@[simp] theorem mk_add (N M : Nat) (hN : 0 < N) (hM : 0 < M) (x y : Laurent) :
+@[simp] theorem mk_add (N M : Nat) (hN : 0 < N) (hM : 0 < M) (x y : Laurent K) :
     mk N hN x + mk M hM y = mk (N * M) (Nat.mul_pos hN hM) (subL M x + subL N y) := rfl
-@[simp] theorem mk_mul (N M : Nat) (hN : 0 < N) (hM : 0 < M) (x y : Laurent) :
+@[simp] theorem mk_mul (N M : Nat) (hN : 0 < N) (hM : 0 < M) (x y : Laurent K) :
     mk N hN x * mk M hM y = mk (N * M) (Nat.mul_pos hN hM) (subL M x * subL N y) := rfl
-@[simp] theorem mk_neg (N : Nat) (hN : 0 < N) (x : Laurent) : -mk N hN x = mk N hN (-x) := rfl
-@[simp] theorem mk_inv (N : Nat) (hN : 0 < N) (x : Laurent) : (mk N hN x)⁻¹ = mk N hN x⁻¹ := rfl
-theorem zero_def : (0 : Puiseux) = mk 1 one_pos 0 := rfl
-theorem one_def : (1 : Puiseux) = mk 1 one_pos 1 := rfl
+@[simp] theorem mk_neg (N : Nat) (hN : 0 < N) (x : Laurent K) : -mk N hN x = mk N hN (-x) := rfl
+@[simp] theorem mk_inv (N : Nat) (hN : 0 < N) (x : Laurent K) : (mk N hN x)⁻¹ = mk N hN x⁻¹ := rfl
+theorem zero_def : (0 : Puiseux K) = mk 1 one_pos 0 := rfl
+theorem one_def : (1 : Puiseux K) = mk 1 one_pos 1 := rfl
 
 /-- Push substitutions inward, then identify the levels. -/
 macro "pnorm" : tactic => `(tactic| (
@@ -528,10 +552,10 @@ macro "pnorm" : tactic => `(tactic| (
   try simp only [Nat.mul_one, Nat.one_mul, Nat.mul_comm, Nat.mul_assoc, Nat.mul_left_comm]
   try simp only [subL_one_id]))
 
-theorem mk_eq_zero {N : Nat} {hN : 0 < N} {x : Laurent} : mk N hN x = 0 ↔ x = 0 := by
+theorem mk_eq_zero {N : Nat} {hN : 0 < N} {x : Laurent K} : mk N hN x = 0 ↔ x = 0 := by
   rw [zero_def, mk_eq, subL_one_id, subL_zero]
 
-instance : CommRing Puiseux where
+instance : CommRing (Puiseux K) where
   add_zero := ind fun N hN x => by rw [zero_def, mk_add]; pnorm; grind
   add_comm := ind fun N hN x => ind fun M hM y => by simp only [mk_add]; pnorm; grind
   add_assoc := ind fun N hN x => ind fun M hM y => ind fun K hK z => by
@@ -568,7 +592,7 @@ instance : CommRing Puiseux where
     unfold ofL; rw [mk_neg, Ring.intCast_neg]
   mul_comm := ind fun N hN x => ind fun M hM y => by simp only [mk_mul]; pnorm; grind
 
-instance : Field Puiseux where
+instance : Field (Puiseux K) where
   div_eq_mul_inv _ _ := rfl
   zero_ne_one h := by
     rw [zero_def, one_def, mk_eq, subL_one_id, subL_one_id] at h
@@ -587,7 +611,7 @@ instance : Field Puiseux where
   zpow_neg x n := by
     match n with
     | .ofNat 0 =>
-      show (1 : Puiseux) = 1⁻¹
+      show (1 : Puiseux K) = 1⁻¹
       rw [one_def, mk_inv, Field.inv_one]
     | .ofNat (k + 1) => rfl
     | .negSucc k =>
@@ -597,7 +621,7 @@ instance : Field Puiseux where
 
 /-! ### The order -/
 
-private theorem pos_congr (p q : PPair) (h : p ≈ q) : (0 < p.val.2) = (0 < q.val.2) := by
+private theorem pos_congr (p q : PPair K) (h : p ≈ q) : (0 < p.val.2) = (0 < q.val.2) := by
   obtain ⟨⟨N, x⟩, hN⟩ := p; obtain ⟨⟨M, y⟩, hM⟩ := q
   have h : subL M x = subL N y := h
   apply propext
@@ -605,30 +629,30 @@ private theorem pos_congr (p q : PPair) (h : p ≈ q) : (0 < p.val.2) = (0 < q.v
   rw [← subL_pos hM, h, subL_pos hN]
 
 /-- Positivity: the Laurent series at any level is positive. -/
-def IsPos (z : Puiseux) : Prop := Quotient.liftOn z (fun p => 0 < p.val.2) pos_congr
+def IsPos (z : Puiseux K) : Prop := Quotient.liftOn z (fun p => 0 < p.val.2) pos_congr
 
-theorem isPos_mk (N : Nat) (hN : 0 < N) (x : Laurent) : IsPos (mk N hN x) ↔ 0 < x := Iff.rfl
+theorem isPos_mk (N : Nat) (hN : 0 < N) (x : Laurent K) : IsPos (mk N hN x) ↔ 0 < x := Iff.rfl
 
-private theorem lmul_pos {a b : Laurent} (ha : 0 < a) (hb : 0 < b) : 0 < a * b := by
+private theorem lmul_pos {a b : Laurent K} (ha : 0 < a) (hb : 0 < b) : 0 < a * b := by
   have := OrderedRing.mul_lt_mul_of_pos_left hb ha; grind
 
-private theorem isPos_add {x y : Puiseux} (hx : IsPos x) (hy : IsPos y) : IsPos (x + y) := by
+private theorem isPos_add {x y : Puiseux K} (hx : IsPos x) (hy : IsPos y) : IsPos (x + y) := by
   induction x using ind with | h N hN a =>
   induction y using ind with | h M hM b =>
   rw [isPos_mk] at hx hy; rw [mk_add, isPos_mk]
   have := (subL_pos hM).mpr hx; have := (subL_pos hN).mpr hy; grind
 
-private theorem isPos_mul {x y : Puiseux} (hx : IsPos x) (hy : IsPos y) : IsPos (x * y) := by
+private theorem isPos_mul {x y : Puiseux K} (hx : IsPos x) (hy : IsPos y) : IsPos (x * y) := by
   induction x using ind with | h N hN a =>
   induction y using ind with | h M hM b =>
   rw [isPos_mk] at hx hy; rw [mk_mul, isPos_mk]
   exact lmul_pos ((subL_pos hM).mpr hx) ((subL_pos hN).mpr hy)
 
-private theorem not_isPos_both (x : Puiseux) (h1 : IsPos x) (h2 : IsPos (-x)) : False := by
+private theorem not_isPos_both (x : Puiseux K) (h1 : IsPos x) (h2 : IsPos (-x)) : False := by
   induction x using ind with | h N hN a =>
   rw [isPos_mk] at h1; rw [mk_neg, isPos_mk] at h2; grind
 
-private theorem isPos_tri (x : Puiseux) : x = 0 ∨ IsPos x ∨ IsPos (-x) := by
+private theorem isPos_tri (x : Puiseux K) : x = 0 ∨ IsPos x ∨ IsPos (-x) := by
   induction x using ind with | h N hN a =>
   rw [mk_neg, isPos_mk, isPos_mk, mk_eq_zero]
   have : a < 0 ∨ a = 0 ∨ 0 < a := by grind
@@ -637,34 +661,34 @@ private theorem isPos_tri (x : Puiseux) : x = 0 ∨ IsPos x ∨ IsPos (-x) := by
   · left; exact h
   · right; left; exact h
 
-private theorem not_isPos_zero : ¬ IsPos (0 : Puiseux) := by
+private theorem not_isPos_zero : ¬ IsPos (0 : Puiseux K) := by
   rw [zero_def, isPos_mk]; grind
 
-instance : LT Puiseux := ⟨fun x y => IsPos (y - x)⟩
-instance : LE Puiseux := ⟨fun x y => x = y ∨ x < y⟩
+instance : LT (Puiseux K) := ⟨fun x y => IsPos (y - x)⟩
+instance : LE (Puiseux K) := ⟨fun x y => x = y ∨ x < y⟩
 
-theorem lt_def (x y : Puiseux) : x < y ↔ IsPos (y - x) := Iff.rfl
+theorem lt_def (x y : Puiseux K) : x < y ↔ IsPos (y - x) := Iff.rfl
 
-theorem lt_irrefl (x : Puiseux) : ¬ x < x := by
+theorem lt_irrefl (x : Puiseux K) : ¬ x < x := by
   rw [lt_def]; have : x - x = 0 := by grind
   rw [this]; exact not_isPos_zero
 
-theorem lt_trans {x y z : Puiseux} (h1 : x < y) (h2 : y < z) : x < z := by
+theorem lt_trans {x y z : Puiseux K} (h1 : x < y) (h2 : y < z) : x < z := by
   rw [lt_def] at *; have : z - x = (z - y) + (y - x) := by grind
   rw [this]; exact isPos_add h2 h1
 
-theorem lt_asymm {x y : Puiseux} (h1 : x < y) (h2 : y < x) : False := by
+theorem lt_asymm {x y : Puiseux K} (h1 : x < y) (h2 : y < x) : False := by
   rw [lt_def] at *; have : x - y = -(y - x) := by grind
   rw [this] at h2; exact not_isPos_both _ h1 h2
 
-theorem lt_trichotomy (x y : Puiseux) : x < y ∨ x = y ∨ y < x := by
+theorem lt_trichotomy (x y : Puiseux K) : x < y ∨ x = y ∨ y < x := by
   rcases isPos_tri (y - x) with h | h | h
   · exact Or.inr (Or.inl (by grind))
   · exact Or.inl h
   · right; right; rw [lt_def]; have : x - y = -(y - x) := by grind
     rw [this]; exact h
 
-instance : Std.IsLinearOrder Puiseux where
+instance : Std.IsLinearOrder (Puiseux K) where
   le_refl _ := Or.inl rfl
   le_trans _ _ _ h1 h2 := by
     rcases h1 with rfl | h1 <;> rcases h2 with rfl | h2
@@ -684,7 +708,7 @@ instance : Std.IsLinearOrder Puiseux where
     · exact Or.inl (Or.inl h)
     · exact Or.inr (Or.inr h)
 
-instance : Std.LawfulOrderLT Puiseux where
+instance : Std.LawfulOrderLT (Puiseux K) where
   lt_iff x y := by
     constructor
     · intro h
@@ -696,7 +720,7 @@ instance : Std.LawfulOrderLT Puiseux where
       · subst h1; exact (h2 (Or.inl rfl)).elim
       · exact h1
 
-instance : OrderedAdd Puiseux where
+instance : OrderedAdd (Puiseux K) where
   add_le_left_iff {a b} c := by
     have key : b + c - (a + c) = b - a := by grind
     constructor
@@ -708,9 +732,9 @@ instance : OrderedAdd Puiseux where
         rw [this, h]; grind
       · exact Or.inr (by rw [lt_def, ← key]; exact h)
 
-instance : OrderedRing Puiseux where
+instance : OrderedRing (Puiseux K) where
   zero_lt_one := by
-    rw [lt_def]; have : (1 : Puiseux) - 0 = 1 := by grind
+    rw [lt_def]; have : (1 : Puiseux K) - 0 = 1 := by grind
     rw [this, one_def, isPos_mk]
     exact OrderedRing.zero_lt_one
   mul_lt_mul_of_pos_left {a b c} h hc := by
@@ -722,23 +746,23 @@ instance : OrderedRing Puiseux where
 
 /-! ### Laurent series embed, and `ε` has every root -/
 
-theorem ofL_add (x y : Laurent) : ofL (x + y) = ofL x + ofL y := by
+theorem ofL_add (x y : Laurent K) : ofL (x + y) = ofL x + ofL y := by
   unfold ofL; rw [mk_add]; pnorm
-theorem ofL_mul (x y : Laurent) : ofL (x * y) = ofL x * ofL y := by
+theorem ofL_mul (x y : Laurent K) : ofL (x * y) = ofL x * ofL y := by
   unfold ofL; rw [mk_mul]; pnorm
-theorem ofL_neg (x : Laurent) : ofL (-x) = -ofL x := rfl
+theorem ofL_neg (x : Laurent K) : ofL (-x) = -ofL x := rfl
 
-theorem ofL_lt {x y : Laurent} : ofL x < ofL y ↔ x < y := by
+theorem ofL_lt {x y : Laurent K} : ofL x < ofL y ↔ x < y := by
   have : ofL y - ofL x = ofL (y - x) := by
     show ofL y + -ofL x = ofL (y + -x); rw [ofL_add, ofL_neg]
   rw [lt_def, this]; unfold ofL; rw [isPos_mk]
   constructor <;> intro h <;> grind
 
 /-- `x ↦ x(ε^{1/N})` is a ring map. -/
-private theorem mk_mul_same (N : Nat) (hN : 0 < N) (x y : Laurent) :
+private theorem mk_mul_same (N : Nat) (hN : 0 < N) (x y : Laurent K) :
     mk N hN (x * y) = mk N hN x * mk N hN y := by rw [mk_mul]; pnorm
 
-theorem mk_pow (N : Nat) (hN : 0 < N) (x : Laurent) (n : Nat) :
+theorem mk_pow (N : Nat) (hN : 0 < N) (x : Laurent K) (n : Nat) :
     mk N hN (x ^ n) = mk N hN x ^ n := by
   induction n with
   | zero => show mk N hN 1 = mk 1 one_pos 1; pnorm
@@ -747,14 +771,14 @@ theorem mk_pow (N : Nat) (hN : 0 < N) (x : Laurent) (n : Nat) :
     rw [mk_mul_same, ih]
 
 /-- The infinitesimal `ε`. -/
-def eps : Puiseux := ofL Laurent.eps
-/-- A rational number. -/
-def ofRat (q : Rat) : Puiseux := ofL (Laurent.ofRat q)
+def eps : Puiseux K := ofL Laurent.eps
+/-- A coefficient, as a constant series. -/
+def ofK (q : K) : Puiseux K := ofL (Laurent.ofK q)
 
 /-- `ε^{1/N}`. -/
-def root (N : Nat) (hN : 0 < N) : Puiseux := mk N hN Laurent.eps
+def root (N : Nat) (hN : 0 < N) : Puiseux K := mk N hN Laurent.eps
 
-private theorem ofRing_pow (a : PS) (n : Nat) : (ofRing a : Laurent) ^ n = ofRing (a ^ n) := by
+private theorem ofRing_pow (a : PS K) (n : Nat) : (ofRing a : Laurent K) ^ n = ofRing (a ^ n) := by
   induction n with
   | zero => rfl
   | succ n ih =>
@@ -762,33 +786,33 @@ private theorem ofRing_pow (a : PS) (n : Nat) : (ofRing a : Laurent) ^ n = ofRin
     rw [ih, ← ofRing_mul]
 
 /-- `(ε^{1/N})^N = ε`. -/
-theorem root_pow (N : Nat) (hN : 0 < N) : root N hN ^ N = eps := by
+theorem root_pow (N : Nat) (hN : 0 < N) : (root N hN : Puiseux K) ^ N = eps := by
   unfold root eps ofL
   rw [← mk_pow, mk_eq, subL_one_id]
   unfold Laurent.eps
   rw [ofRing_pow, subL_ofRing N hN, sub_X hN]
 
-theorem root_pos (N : Nat) (hN : 0 < N) : 0 < root N hN := by
-  rw [lt_def]; have : root N hN - 0 = root N hN := by grind
+theorem root_pos (N : Nat) (hN : 0 < N) : 0 < (root N hN : Puiseux K) := by
+  rw [lt_def]; have : (root N hN : Puiseux K) - 0 = root N hN := by grind
   rw [this]; unfold root; rw [isPos_mk]; exact Laurent.eps_pos
 
-/-- `ε^{1/N}` is infinitesimal: below every positive rational. -/
-theorem root_lt_ofRat (N : Nat) (hN : 0 < N) {q : Rat} (hq : 0 < q) : root N hN < ofRat q := by
+/-- `ε^{1/N}` is infinitesimal: below every positive element of `K`. -/
+theorem root_lt_ofK (N : Nat) (hN : 0 < N) {q : K} (hq : 0 < q) : root N hN < ofK q := by
   rw [lt_def]
-  show IsPos (mk 1 one_pos (Laurent.ofRat q) + -mk N hN Laurent.eps)
+  show IsPos (mk 1 one_pos (Laurent.ofK q) + -mk N hN Laurent.eps)
   rw [mk_neg, mk_add, isPos_mk, subL_one_id]
-  have hc : subL N (Laurent.ofRat q) = Laurent.ofRat q := by
-    unfold Laurent.ofRat; rw [subL_ofRing N hN, sub_C hN]
+  have hc : subL N (Laurent.ofK q) = Laurent.ofK q := by
+    unfold Laurent.ofK; rw [subL_ofRing N hN, sub_C hN]
   rw [hc]
-  have := Laurent.eps_lt_ofRat hq
+  have := Laurent.eps_lt_ofK hq
   grind
 
-theorem eps_pos : 0 < eps := ofL_lt.mpr Laurent.eps_pos
+theorem eps_pos : 0 < (eps : Puiseux K) := ofL_lt.mpr Laurent.eps_pos
 
 /-- `grind` reasons in the Puiseux field. -/
-example (x : Puiseux) (hx : x ≠ 0) : x * x⁻¹ = 1 := by grind
-example (N : Nat) (hN : 0 < N) : (root N hN)⁻¹ * root N hN = 1 := by
-  have := root_pos N hN; grind
+example (x : Puiseux K) (hx : x ≠ 0) : x * x⁻¹ = 1 := by grind
+example (N : Nat) (hN : 0 < N) : (root N hN : Puiseux K)⁻¹ * root N hN = 1 := by
+  have := root_pos (K := K) N hN; grind
 
 end
 

@@ -9,11 +9,12 @@ modulo null sequences, where "Cauchy" is measured by the order of `F` itself:
 field, and `F` embeds in it as an ordered subfield. Everything is generic and
 proved without `sorry`.
 
-Applied to the Puiseux field, this gives `LeviCivitaField := Completion Puiseux`.
+Applied to the Puiseux field, this gives `LeviCivitaFieldOver K := Completion (Puiseux K)`
+(and `LeviCivitaField := LeviCivitaFieldOver ℚ`).
 In the Puiseux field the order topology is the valuation topology (the powers
 `εⁿ` are cofinal among positive elements), and the Puiseux series are dense in
 the Levi-Civita field (truncations converge). So this completion is the
-Levi-Civita field over `ℚ`: series `Σ aᵢ ε^{qᵢ}` with left-finite rational
+Levi-Civita field over `K`: series `Σ aᵢ ε^{qᵢ}` with left-finite rational
 support, unbounded denominators allowed.
 
 The Levi-Civita field is real closed only when its coefficient field is. With
@@ -731,15 +732,21 @@ namespace NullSeq
 
 open Series Series.PS Frac Lean.Grind
 
-private theorem laurent_eps_pow (n : Nat) : Laurent.eps ^ n = ofRing (X ^ n) := by
+attribute [local instance] Semiring.natCast Ring.intCast
+attribute [local instance high] Semiring.ofNat
+
+variable {K : Type u} [Field K] [LE K] [LT K] [Std.IsLinearOrder K] [Std.LawfulOrderLT K]
+  [OrderedRing K]
+
+private theorem laurent_eps_pow (n : Nat) : (Laurent.eps : Laurent K) ^ n = ofRing ((X : PS K) ^ n) := by
   induction n with
   | zero => rfl
   | succ n ih =>
-    show Laurent.eps ^ n * Laurent.eps = ofRing (X ^ n * X)
+    show (Laurent.eps : Laurent K) ^ n * Laurent.eps = ofRing ((X : PS K) ^ n * X)
     rw [ih, ofRing_mul]; rfl
 
-/-- In `ℚ((ε))`, every positive element exceeds some power of `ε`. -/
-theorem laurent_eps_pow_lt {x : Laurent} (hx : 0 < x) : ∃ j : Nat, Laurent.eps ^ j < x := by
+/-- In `K((ε))`, every positive element exceeds some power of `ε`. -/
+theorem laurent_eps_pow_lt {x : Laurent K} (hx : 0 < x) : ∃ j : Nat, Laurent.eps ^ j < x := by
   induction x using Frac.ind with
   | h a b hb =>
   have hab : PS.IsPos (a * b) := by
@@ -752,9 +759,9 @@ theorem laurent_eps_pow_lt {x : Laurent} (hx : 0 < x) : ∃ j : Nat, Laurent.eps
   rw [laurent_eps_pow, Frac.lt_def]
   unfold ofRing; show Frac.IsPos (Frac.mk a b hb + -Frac.mk (X ^ (p + 1)) 1 _)
   rw [Frac.mk_neg, Frac.mk_add, isPos_mk, PS.lt_def]
-  have e : (a * 1 + -X ^ (p + 1) * b) * (b * 1) - 0 = a * b - X ^ (p + 1) * (b * b) := by grind
+  have e : (a * 1 + -(X : PS K) ^ (p + 1) * b) * (b * 1) - 0 = a * b - (X : PS K) ^ (p + 1) * (b * b) := by grind
   rw [e]
-  have hX : ∀ m, m < p + 1 → (X ^ (p + 1)).coeff m = 0 := fun m hm => by
+  have hX : ∀ m, m < p + 1 → ((X : PS K) ^ (p + 1)).coeff m = 0 := fun m hm => by
     rw [X_pow_coeff]; simp only [show m ≠ p + 1 by omega, ↓reduceIte]
   have hlow := (mul_low (X ^ (p + 1)) (b * b) (p + 1) 0 hX (fun _ h => absurd h (Nat.not_lt_zero _))).1
   refine ⟨p, fun m hm => ?_, ?_⟩
@@ -790,15 +797,15 @@ private theorem pow_mul' {F : Type u} [CommRing F] (a : F) (m n : Nat) :
   | zero => rw [Semiring.pow_zero, Nat.mul_zero, Semiring.pow_zero]
   | succ n ih => rw [Semiring.pow_succ, ih, Nat.mul_succ, Semiring.pow_add]
 
-private theorem eps_lt_one : (Puiseux.eps : Puiseux) < 1 := by
-  have := Puiseux.root_lt_ofRat 1 (by decide) (q := 1) (by decide)
-  have e1 : Puiseux.root 1 (by decide) = Puiseux.eps := by
-    have := Puiseux.root_pow 1 (by decide); rwa [Semiring.pow_one] at this
-  have e2 : Puiseux.ofRat 1 = 1 := rfl
+private theorem eps_lt_one : (Puiseux.eps : Puiseux K) < 1 := by
+  have := Puiseux.root_lt_ofK (K := K) 1 (by decide) (q := 1) OrderedRing.zero_lt_one
+  have e1 : (Puiseux.root 1 (by decide) : Puiseux K) = Puiseux.eps := by
+    have := Puiseux.root_pow (K := K) 1 (by decide); rwa [Semiring.pow_one] at this
+  have e2 : (Puiseux.ofK 1 : Puiseux K) = 1 := rfl
   rwa [e1, e2] at this
 
 /-- **`εᵏ → 0` in the Puiseux field**: every positive element exceeds some `εᵏ`. -/
-theorem puiseux_eps_pow_lt {z : Puiseux} (hz : 0 < z) : ∃ j : Nat, Puiseux.eps ^ j < z := by
+theorem puiseux_eps_pow_lt {z : Puiseux K} (hz : 0 < z) : ∃ j : Nat, Puiseux.eps ^ j < z := by
   induction z using Puiseux.ind with
   | h N hN x =>
   have hx : 0 < x := by
@@ -807,24 +814,24 @@ theorem puiseux_eps_pow_lt {z : Puiseux} (hz : 0 < z) : ∃ j : Nat, Puiseux.eps
   obtain ⟨j, hj⟩ := laurent_eps_pow_lt hx
   refine ⟨j, ?_⟩
   -- `εʲ = (ε^{1/N})^{N j} ≤ (ε^{1/N})ʲ < z`
-  have hr : Puiseux.root N hN ^ j < Puiseux.mk N hN x := by
+  have hr : (Puiseux.root N hN : Puiseux K) ^ j < Puiseux.mk N hN x := by
     unfold Puiseux.root; rw [← Puiseux.mk_pow, Puiseux.lt_def]
     show Puiseux.IsPos (Puiseux.mk N hN x + -Puiseux.mk N hN (Laurent.eps ^ j))
     rw [Puiseux.mk_neg, Puiseux.mk_add, Puiseux.isPos_mk]
     have := (subL_pos hN).mpr (show 0 < x - Laurent.eps ^ j by grind)
     rw [subL_sub] at this; rw [subL_neg]; grind
-  have hle : Puiseux.eps ^ j ≤ Puiseux.root N hN ^ j := by
+  have hle : (Puiseux.eps : Puiseux K) ^ j ≤ Puiseux.root N hN ^ j := by
     rw [← Puiseux.root_pow N hN, pow_mul']
     exact pow_le_pow' (Puiseux.root_pos N hN)
-      (by have := Puiseux.root_lt_ofRat N hN (q := 1) (by decide); exact this)
+      (by have := Puiseux.root_lt_ofK (K := K) N hN (q := 1) OrderedRing.zero_lt_one; exact this)
       (Nat.le_mul_of_pos_left j hN)
   grind
 
-theorem puiseux_hasNullSeq : Completion.HasNullSeq Puiseux := by
-  refine ⟨fun k => Puiseux.eps ^ k, fun k => pow_pos' Puiseux.eps_pos k, fun d hd => ?_⟩
+theorem puiseux_hasNullSeq : Completion.HasNullSeq (Puiseux K) := by
+  refine ⟨fun k => Puiseux.eps ^ k, fun k => pow_pos' (Puiseux.eps_pos (K := K)) k, fun d hd => ?_⟩
   obtain ⟨j, hj⟩ := puiseux_eps_pow_lt hd
   exact ⟨j, fun k hk => by
-    have := pow_le_pow' Puiseux.eps_pos eps_lt_one hk; grind⟩
+    have := pow_le_pow' (Puiseux.eps_pos (K := K)) eps_lt_one hk; grind⟩
 
 end NullSeq
 
@@ -832,8 +839,57 @@ end NullSeq
 
 open Series
 
-/-- The Levi-Civita field over `ℚ`: the completion of the Puiseux field. -/
-abbrev LeviCivitaField := Completion Puiseux
+/-- The Levi-Civita field over an ordered coefficient field `K`: the completion of
+the Puiseux field `K{{ε}}`. Its elements are the series `Σ aᵢ ε^{qᵢ}` with `aᵢ ∈ K`
+and left-finite rational support. -/
+abbrev LeviCivitaFieldOver (K : Type u) [Lean.Grind.Field K] [LE K] [LT K]
+    [Std.IsLinearOrder K] [Std.LawfulOrderLT K] [Lean.Grind.OrderedRing K] :=
+  Completion (Puiseux K)
+
+/-- The Levi-Civita field over `ℚ`. -/
+abbrev LeviCivitaField := LeviCivitaFieldOver Rat
+
+namespace LeviCivitaFieldOver
+
+open Completion Lean.Grind
+
+variable {K : Type u} [Field K] [LE K] [LT K] [Std.IsLinearOrder K] [Std.LawfulOrderLT K]
+  [OrderedRing K]
+
+noncomputable section
+
+/-- The infinitesimal `ε`. -/
+def eps : LeviCivitaFieldOver K := const Puiseux.eps
+/-- `ε^{1/N}`. -/
+def root (N : Nat) (hN : 0 < N) : LeviCivitaFieldOver K := const (Puiseux.root N hN)
+/-- A coefficient. -/
+def ofK (q : K) : LeviCivitaFieldOver K := const (Puiseux.ofK q)
+
+theorem const_pow (a : Puiseux K) (n : Nat) :
+    (const a : LeviCivitaFieldOver K) ^ n = const (a ^ n) := by
+  induction n with
+  | zero => rfl
+  | succ n ih =>
+    show const a ^ n * const a = const (a ^ n * a)
+    rw [ih, ← const_mul]
+
+theorem eps_pos : 0 < (eps : LeviCivitaFieldOver K) := const_lt.mpr Puiseux.eps_pos
+theorem root_pow (N : Nat) (hN : 0 < N) : (root N hN : LeviCivitaFieldOver K) ^ N = eps := by
+  unfold root eps; rw [const_pow, Puiseux.root_pow]
+theorem root_pos (N : Nat) (hN : 0 < N) : 0 < (root N hN : LeviCivitaFieldOver K) :=
+  const_lt.mpr (Puiseux.root_pos N hN)
+theorem root_lt_ofK (N : Nat) (hN : 0 < N) {q : K} (hq : 0 < q) :
+    (root N hN : LeviCivitaFieldOver K) < ofK q :=
+  const_lt.mpr (Puiseux.root_lt_ofK N hN hq)
+
+/-- **The Levi-Civita field is Cauchy-complete**: every Cauchy sequence converges. -/
+theorem complete (x : Nat → LeviCivitaFieldOver K) (hx : Cauchy.IsCauchy x) :
+    ∃ L, ∀ D, 0 < D → ∃ N, ∀ n, N ≤ n → Cauchy.Near (x n) L D :=
+  Completion.complete NullSeq.puiseux_hasNullSeq x hx
+
+end
+
+end LeviCivitaFieldOver
 
 namespace LeviCivitaField
 
@@ -842,30 +898,22 @@ open Completion
 noncomputable section
 
 /-- The infinitesimal `ε`. -/
-def eps : LeviCivitaField := const Puiseux.eps
+abbrev eps : LeviCivitaField := LeviCivitaFieldOver.eps
 /-- `ε^{1/N}`. -/
-def root (N : Nat) (hN : 0 < N) : LeviCivitaField := const (Puiseux.root N hN)
+abbrev root (N : Nat) (hN : 0 < N) : LeviCivitaField := LeviCivitaFieldOver.root N hN
 /-- A rational number. -/
-def ofRat (q : Rat) : LeviCivitaField := const (Puiseux.ofRat q)
+abbrev ofRat (q : Rat) : LeviCivitaField := LeviCivitaFieldOver.ofK q
 
-private theorem const_pow (a : Puiseux) (n : Nat) : (const a : LeviCivitaField) ^ n = const (a ^ n) := by
-  induction n with
-  | zero => rfl
-  | succ n ih =>
-    show const a ^ n * const a = const (a ^ n * a)
-    rw [ih, ← const_mul]
-
-theorem eps_pos : 0 < eps := const_lt.mpr Puiseux.eps_pos
-theorem root_pow (N : Nat) (hN : 0 < N) : root N hN ^ N = eps := by
-  unfold root eps; rw [const_pow, Puiseux.root_pow]
-theorem root_pos (N : Nat) (hN : 0 < N) : 0 < root N hN := const_lt.mpr (Puiseux.root_pos N hN)
+theorem eps_pos : 0 < eps := LeviCivitaFieldOver.eps_pos
+theorem root_pow (N : Nat) (hN : 0 < N) : root N hN ^ N = eps := LeviCivitaFieldOver.root_pow N hN
+theorem root_pos (N : Nat) (hN : 0 < N) : 0 < root N hN := LeviCivitaFieldOver.root_pos N hN
 theorem root_lt_ofRat (N : Nat) (hN : 0 < N) {q : Rat} (hq : 0 < q) : root N hN < ofRat q :=
-  const_lt.mpr (Puiseux.root_lt_ofRat N hN hq)
+  LeviCivitaFieldOver.root_lt_ofK N hN hq
 
 /-- **The Levi-Civita field is Cauchy-complete**: every Cauchy sequence converges. -/
 theorem complete (x : Nat → LeviCivitaField) (hx : Cauchy.IsCauchy x) :
     ∃ L, ∀ D, 0 < D → ∃ N, ∀ n, N ≤ n → Cauchy.Near (x n) L D :=
-  Completion.complete NullSeq.puiseux_hasNullSeq x hx
+  LeviCivitaFieldOver.complete x hx
 
 /-- `grind` reasons in the Levi-Civita field. -/
 example (x : LeviCivitaField) (h : 0 < x) : 0 < x + eps := by have := eps_pos; grind

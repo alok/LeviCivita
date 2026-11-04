@@ -64,7 +64,7 @@ instance : Ord Term where
 structure LC where
   /-- Terms sorted by descending exponent. -/
   terms : Array Term
-deriving Inhabited, Repr
+deriving Inhabited, Repr, DecidableEq
 
 namespace LC
 
@@ -2607,6 +2607,9 @@ namespace NLC
 open LC
 
 @[ext] theorem ext {x y : NLC} (h : x.val = y.val) : x = y := Subtype.ext h
+
+instance : DecidableEq NLC := fun x y =>
+  decidable_of_iff (x.val = y.val) ⟨ext, fun h => h ▸ rfl⟩
 
 instance : Inhabited NLC := ⟨⟨zero, zero_fullWF⟩⟩
 instance : Zero NLC := ⟨⟨zero, zero_fullWF⟩⟩

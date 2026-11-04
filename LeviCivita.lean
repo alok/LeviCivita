@@ -32,6 +32,7 @@ open LeviCivita.Fast.FastLC
 -/
 
 import LeviCivita.Core
+import LeviCivita.Frac
 import LeviCivita.Field
 import LeviCivita.Fast
 import LeviCivita.Analysis

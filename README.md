@@ -52,6 +52,26 @@ Everything builds on Lean `v4.35.0-rc3` (`lake build`, `lake test`).
 
 Native compilation achieves **~1 billion ops/sec** for basic operations.
 
+## Formal core: a verified commutative ring
+
+`LeviCivita.Core` (rational coefficients and exponents) proves the field's ring
+structure with no `sorry`. The laws hold for *normalized* values (sorted, strictly
+decreasing exponents, no zero coefficients), which every operation preserves, so
+the instance lives on the subtype `NLC`:
+
+```lean
+import LeviCivita.Core
+open LeviCivita.Core
+
+instance : Lean.Grind.CommRing NLC := inferInstance   -- depends only on propext, choice, Quot.sound
+example (x y : NLC) : (x + y) * (x - y) = x * x - y * y := by grind
+```
+
+The proofs reduce every law to an identity of finite sums: addition is additive
+in the weighted sum `Σ coeff · g(exp)`, multiplication is a convolution, and the
+weighted sums against indicators determine a normalized value. CI fails if any
+`sorry` comes back.
+
 ## The field, analysis and nonstandard analysis
 
 Four modules on top of `Fast`, all exercised by `lake test`: closed-form checks

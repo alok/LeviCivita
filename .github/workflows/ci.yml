@@ -16,3 +16,9 @@ jobs:
           build: true
           test: true
           use-mathlib-cache: false
+      - name: No sorry in the library
+        run: |
+          ~/.elan/bin/lake build 2>&1 | tee build.log
+          if grep -q "declaration uses 'sorry'\|declaration uses \`sorry\`" build.log; then
+            echo "::error::the library contains sorry"; exit 1
+          fi

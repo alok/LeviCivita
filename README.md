@@ -115,9 +115,30 @@ open LeviCivita.Series
 ```
 
 Equality of infinite series is undecidable, so the field instance uses classical
-choice, but every coefficient is computable. Rational exponents (the full
-Levi-Civita field) are the next step. `Fast` and the analysis modules compute
-in that field with explicit truncation.
+choice, but every coefficient is computable.
+
+### Rational exponents: `Puiseux`
+
+`LeviCivita.Puiseux` glues the copies `ℚ((ε^{1/N}))` together along the
+substitutions `ε ↦ εᵏ`. Those substitutions are proved to be injective,
+order-preserving ring maps, first on power series and then, via a generic
+`Frac.map`, on Laurent series. The result is an ordered field of series with
+rational exponents of bounded denominator, in which `ε` has every root:
+
+```lean
+import LeviCivita.Puiseux
+open LeviCivita.Series
+
+example : Lean.Grind.Field Puiseux := inferInstance
+example : Lean.Grind.OrderedRing Puiseux := inferInstance
+#check Puiseux.root_pow       -- (ε^{1/N})^N = ε
+#check Puiseux.root_lt_ofRat  -- 0 < q → ε^{1/N} < q   (and Puiseux.root_pos)
+```
+
+`Puiseux` is the part of the Levi-Civita field whose exponents have a common
+denominator. The full field also allows exponent sequences like `1 − 1/n` with
+unbounded denominators. `Fast` and the analysis modules compute in that full
+field with explicit truncation.
 
 The proofs reduce every law to an identity of finite sums: addition is additive
 in the weighted sum `Σ coeff · g(exp)`, multiplication is a convolution, and the

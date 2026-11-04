@@ -54,8 +54,12 @@ Native compilation achieves **~1 billion ops/sec** for basic operations.
 
 ## The field, analysis and nonstandard analysis
 
-Four modules on top of `Fast` (all exercised by `lake test`, 58 checks against
-closed forms). `docs/NSA.md` is a guided tour.
+Four modules on top of `Fast`, all exercised by `lake test`: closed-form checks
+plus randomized property tests of the field axioms, the order, the standard
+part, and every derivative routine against an independent forward-mode oracle.
+`docs/NSA.md` is a guided tour, including the precision model: exponents are exact
+rationals (canonicalized by `snapExp`), coefficients are Floats, and every
+series returns only the terms it determines.
 
 ### `LeviCivita.Analysis`: the ordered field
 
@@ -66,9 +70,10 @@ closed forms). `docs/NSA.md` is a guided tour.
   or infinite), `sqrt`, `root n` (odd roots of negatives too) sum a series in `δ`
   until it passes a requested valuation. `(H + 1)^{1/3} = H^{1/3} + ⅓H^{−2/3} − …`,
   `∛(−ε) = −ε^{1/3}`.
-* Exact Taylor germs of `sin`, `cos`, `exp`, `log`, `sinh`, `cosh`, `tan`: `f(a + ε)`
-  carries `f(a), f'(a), f''(a)/2, …` through `ε⁴`. Outside the domain (`exp H`, `log ε`)
-  the result is `undefined`.
+* Exact Taylor germs of `sin`, `cos`, `exp`, `log`, `sinh`, `cosh`, `tan`, `atan`: every
+  term of valuation `< 5` is exact, so `f(a + ε)` carries `f(a), f'(a), f''(a)/2, …`
+  through `ε⁴` and `sin √ε` is exact through `ε^{9/2}`. Outside the domain (`exp H`,
+  `log ε`) the result is `undefined`.
 * `grad`/`valueAndGrad`: the whole gradient in **one** evaluation, coordinate `i`
   seeded at its own scale `ε^{1+i/n}`. At creases of `max`/`min`/`abs` this is a
   lexicographic derivative (one smooth piece), not a mix of one-sided partials.
@@ -78,7 +83,8 @@ closed forms). `docs/NSA.md` is a guided tour.
 * `isInfinitesimal`, `isFinite`, `isInfinite`, `isStandard`, `st?` (standard part,
   `none` for infinite), `infinitelyClose`.
 * `RealLike`: write a function once; at `Float` it is `f`, at `LC` its natural
-  extension `*f`. `Ext` wraps one and computes the nonstandard definitions:
+  extension `*f`, with the same domain (`1/0`, `√−1` are `undefined`, so `st?` is
+  `none`). `Ext` wraps one and computes the nonstandard definitions:
 
 ```lean
 import LeviCivita.NSA
@@ -103,8 +109,9 @@ terms long; RayTrace4D computes every surface normal with it.
 For a polynomial, the Riemann sum with `N` steps has a closed form in `N`
 (Faulhaber), so it can be evaluated at `N = H`. The standard part is the integral.
 The infinitesimal tail is the rule's exact error: for the left rule `−(b−a)(f(b)−f(a))/2 · ε`,
-and for the midpoint rule `−(b−a)²(f'(b)−f'(a))/24 · ε²`.
+for the midpoint rule `−(b−a)²(f'(b)−f'(a))/24 · ε²`, and for the trapezoid rule
+(`trapezoidSum`) `+(b−a)²(f'(b)−f'(a))/12 · ε²`.
 
 ## License
 
-MIT
+Apache 2.0 (see `LICENSE`).

@@ -41,6 +41,7 @@ import LeviCivita.Limits
 import LeviCivita.Real
 import LeviCivita.RCF
 import LeviCivita.Hensel
+import LeviCivita.Newton
 import LeviCivita.Field
 import LeviCivita.Fast
 import LeviCivita.Analysis

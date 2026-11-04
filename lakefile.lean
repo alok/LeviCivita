@@ -19,6 +19,10 @@ lean_exe lcbench where
 lean_exe nativebench where
   root := `LeviCivita.NativeBench
 
+/-- Modules shared by the test driver: helpers and the randomized properties. -/
+lean_lib TestSupport where
+  roots := #[`tests.Harness, `tests.Properties]
+
 @[test_driver]
 lean_exe tests where
   root := `tests.Main

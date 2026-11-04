@@ -2,6 +2,8 @@ import LeviCivita.Analysis
 import LeviCivita.NSA
 import LeviCivita.Germ
 import LeviCivita.Hyperfinite
+import tests.Harness
+import tests.Properties
 
 /-!
 # `lake test`: the Levi-Civita field, nonstandard analysis, exact gradients
@@ -11,25 +13,6 @@ and derivatives, Euler–Maclaurin coefficients. Exit code 1 on any failure.
 -/
 
 open LeviCivita LeviCivita.Fast FastLC LeviCivita.Hyperfinite
-
-structure Check where
-  name : String
-  ok : Bool
-  detail : String
-
-def approx (a b : Float) (tol : Float := 1e-9) : Bool := (a - b).abs ≤ tol * (1.0 + b.abs)
-
-def check (name : String) (got want : Float) (tol : Float := 1e-9) : Check :=
-  { name, ok := approx got want tol, detail := s!"got {got}, want {want}" }
-
-def checkB (name : String) (ok : Bool) (detail : String := "") : Check := { name, ok, detail }
-
-def checkOpt (name : String) (got : Option Float) (want : Float) (tol : Float := 1e-9) : Check :=
-  { name, ok := (got.map fun g => approx g want tol).getD false, detail := s!"got {got}, want {want}" }
-
-/-- Largest coefficient of `x − y` among terms of exponent `> −prec` (valuation `< prec`). -/
-def diffBelow (x y : LC) (prec : Float) : Float :=
-  ((x - y).terms.filter (·.exp > -prec)).foldl (fun m t => max m t.coeff.abs) 0
 
 def analysisChecks : List Check :=
   let a := 0.7
@@ -46,7 +29,18 @@ def analysisChecks : List Check :=
     check "sin² + cos² = 1 through ε⁴"
       (let s := sin (ofFloat a + epsilon); let c := cos (ofFloat a + epsilon)
        diffBelow (s * s + c * c) 1 5) 0 1e-12,
-    check "exp ∘ log = id through ε⁴" (diffBelow (exp (log (ofFloat a + epsilon))) (ofFloat a + epsilon) 5) 0 1e-12 ]
+    check "exp ∘ log = id through ε⁴" (diffBelow (exp (log (ofFloat a + epsilon))) (ofFloat a + epsilon) 5) 0 1e-12,
+    check "atan jet ε¹ = 1/(1 + a²)" (epsCoeff (atan (ofFloat a + epsilon)) 1) (1 / (1 + a * a)),
+    check "atan jet ε³ = (3a² − 1)/(3(1 + a²)³)" (epsCoeff (atan (ofFloat a + epsilon)) 3)
+      ((3 * a * a - 1) / (3 * (1 + a * a) ^ 3)),
+    check "atan ∘ tan = id through ε⁴" (diffBelow (atan (tan (ofFloat a + epsilon))) (ofFloat a + epsilon) 5) 0 1e-12,
+    check "sin √ε = √ε − ε^{3/2}/6 + ε^{5/2}/120 − ε^{7/2}/5040 + ε^{9/2}/362880 (fractional jets)"
+      (diffBelow (sin (sqrt epsilon))
+        (sqrt epsilon - smul (1/6) (rpow epsilon 1.5) + smul (1/120) (rpow epsilon 2.5)
+          - smul (1/5040) (rpow epsilon 3.5) + smul (1/362880) (rpow epsilon 4.5)) 5) 0 1e-15,
+    checkB "exp ε^{1/100} is cut where its 64-term series stops being exact"
+      (let y := exp (rpow epsilon 0.01)
+       y.terms.all (fun t => -t.exp < 0.64) && approx (getCoeff y (-0.63)) (1 / factorial 63) 1e-9) ]
 
 def fieldChecks : List Check :=
   let x : LC := ofFloat 3 + smul 2 epsilon - epsilon * epsilon
@@ -71,7 +65,11 @@ def fieldChecks : List Check :=
     checkB "0 < ε < 10⁻³⁰⁰ and H > 10³⁰⁰"
       (decide ((0 : LC) < epsilon) && decide (epsilon < ofFloat 1e-300) && decide (ofFloat 1e300 < H)),
     checkB "1 − ε < 1 < 1 + ε²" (decide ((1 : LC) - epsilon < 1) && decide ((1 : LC) < 1 + epsilon * epsilon)),
-    checkB "max (1 + ε) (1 + 2ε) = 1 + 2ε" (max ((1 : LC) + epsilon) (1 + smul 2 epsilon) == 1 + smul 2 epsilon) ]
+    checkB "max (1 + ε) (1 + 2ε) = 1 + 2ε" (max ((1 : LC) + epsilon) (1 + smul 2 epsilon) == 1 + smul 2 epsilon),
+    checkB "exponents are canonical: ε^{0.1} ε^{0.2} H^{0.3} = 1, ε^{1/3} ε^{1/3} ε^{1/3} = ε"
+      (rpow epsilon 0.1 * rpow epsilon 0.2 * rpow H 0.3 == 1 &&
+       rpow epsilon (1/3) * rpow epsilon (1/3) * rpow epsilon (1/3) == epsilon),
+    checkB "0 · undefined is undefined (NaN propagates, as for Float)" (!isDefined (0 * undefined)) ]
 
 /-- Some standard functions, written once over `RealLike`. -/
 def cube : Ext := ⟨fun x => x * x * x - RealLike.ofFloat 2 * x⟩
@@ -86,6 +84,9 @@ def sinRecip : Ext := ⟨fun x => RealLike.sin (RealLike.inv x)⟩
 def sinSq : Ext := ⟨fun x => RealLike.sin (x * x)⟩
 def sinF : Ext := ⟨fun x => RealLike.sin x⟩
 def expF : Ext := ⟨fun x => RealLike.exp x⟩
+def recipF : Ext := ⟨fun x => RealLike.inv x⟩
+def quotF : Ext := ⟨fun x => RealLike.ofFloat 1 / x⟩
+def atanF : Ext := ⟨fun x => RealLike.atan x⟩
 
 def nsaChecks : List Check :=
   let pts := [-2.5, -1, 0, 0.3, 1.5, 4]
@@ -116,7 +117,14 @@ def nsaChecks : List Check :=
     checkB "lim_{x→0} sin(1/x) does not exist" (sinRecip.limit? 0).isNone,
     checkOpt "lim_{x→∞} (3x² + 1)/(x² − 5) = 3" rational.limitAtInfinity? 3,
     checkOpt "lim_{x→−∞} (3x² + 1)/(x² − 5) = 3" rational.limitAtNegInfinity? 3,
-    checkOpt "lim_{x→∞} √(x² + x) − x = ½" sqrtGap.limitAtInfinity? 0.5 ]
+    checkOpt "lim_{x→∞} √(x² + x) − x = ½" sqrtGap.limitAtInfinity? 0.5,
+    checkB "*f has the domain of f: 1/x, 1 / x at 0 and √x at −1 have no standard part"
+      ((st? (recipF.star 0)).isNone && (st? (quotF.star 0)).isNone && (st? (sqrtF.star (ofFloat (-1)))).isNone),
+    checkB "… so extendsStd holds at points outside the domain too"
+      (recipF.extendsStd [0, 2] && quotF.extendsStd [0, -3] && sqrtF.extendsStd [-1, 4]),
+    checkB "atan H is undefined (no germ at an infinite point), so limitAtInfinity? is none"
+      atanF.limitAtInfinity?.isNone,
+    checkOpt "(atan x)' at 2 = 1/5" (atanF.deriv? 2) 0.2 ]
 
 /-- A smooth test function on ℝ⁴, over any `RealLike`. -/
 def smooth4 {α : Type} [RealLike α] (v : Fin 4 → α) : α :=
@@ -174,11 +182,15 @@ def hyperfiniteChecks : List Check :=
     check "midpoint rule: ε² coefficient = −(b−a)²(p'(b)−p'(a))/24" (epsCoeff mid 2)
       (-(b - a) ^ 2 * (p.deriv.eval b - p.deriv.eval a) / 24) 1e-12,
     checkB "the hyperfinite sum is finite (no H terms)" (isFinite left && isFinite mid),
+    check "trapezoid rule: ε¹ coefficient = 0" (epsCoeff (trapezoidSum p (ofFloat a) (ofFloat b) H) 1) 0 1e-12,
+    check "trapezoid rule: ε² coefficient = +(b−a)²(p'(b)−p'(a))/12"
+      (epsCoeff (trapezoidSum p (ofFloat a) (ofFloat b) H) 2)
+      ((b - a) ^ 2 * (p.deriv.eval b - p.deriv.eval a) / 12) 1e-12,
     check "transfer: closed form at N = 37 = the plain sum"
       (std (riemannSum p (ofFloat a) (ofFloat b) 37 0.5)) (riemannSumDirect p a b 37 0.5) 1e-12 ]
 
 def main : IO UInt32 := do
-  let all := analysisChecks ++ fieldChecks ++ nsaChecks ++ gradChecks ++ hyperfiniteChecks
+  let all := analysisChecks ++ fieldChecks ++ nsaChecks ++ gradChecks ++ hyperfiniteChecks ++ Props.all
   let mut failed := 0
   for c in all do
     if c.ok then IO.println s!"  ok    {c.name}"

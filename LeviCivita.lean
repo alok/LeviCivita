@@ -36,6 +36,7 @@ import LeviCivita.Frac
 import LeviCivita.Series
 import LeviCivita.Puiseux
 import LeviCivita.Completion
+import LeviCivita.Poly
 import LeviCivita.Field
 import LeviCivita.Fast
 import LeviCivita.Analysis

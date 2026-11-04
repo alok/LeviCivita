@@ -2372,6 +2372,193 @@ theorem ofCoeff_add (a b : Coeff) : ofCoeff (a + b) = add (ofCoeff a) (ofCoeff b
   eq_of_wsum_eq _ _ (ofCoeff_fullWF _) (add_fullWF _ _ (ofCoeff_fullWF _) (ofCoeff_fullWF _)) fun g => by
     rw [wsum_add, wsum_ofCoeff, wsum_ofCoeff, wsum_ofCoeff]; grind
 
+/-! ### Leading terms and the order
+
+The order of the field is the sign of the leading term. On normalized values the
+leading term is determined by the coefficients: it is the largest exponent with a
+nonzero coefficient (`lead_of_coeff`). From that, the leading term of a product
+is the product of the leading terms (`mul_lead`), and positives are closed under
+`+` and `·`. -/
+
+/-- `x` is positive: nonzero with a positive leading coefficient. -/
+def Pos (x : LC) : Prop := ∃ h : 0 < x.terms.size, 0 < x.terms[0].coeff
+
+private theorem wsum_eq_zero (l : List Term) (g : Exp → Coeff) (h : ∀ t ∈ l, g t.exp = 0) :
+    wsum l g = 0 := by
+  induction l with
+  | nil => rfl
+  | cons t l ih =>
+    rw [wsum_cons, h t (by simp), ih (fun s hs => h s (by simp [hs]))]; grind
+
+private theorem rat_lt_trichotomy (a b : Rat) : a < b ∨ a = b ∨ b < a := by
+  by_cases h1 : a < b
+  · exact Or.inl h1
+  · by_cases h2 : b < a
+    · exact Or.inr (Or.inr h2)
+    · exact Or.inr (Or.inl (Rat.le_antisymm (Rat.not_lt.mp h2) (Rat.not_lt.mp h1)))
+
+/-- The leading term of a normalized value is the largest exponent with a
+nonzero coefficient. -/
+private theorem lead_of_coeff (z : LC) (hz : z.FullWF) (E : Exp)
+    (hE : coeffAtExp z.terms E ≠ 0) (habove : ∀ e, e > E → coeffAtExp z.terms e = 0) :
+    ∃ h : 0 < z.terms.size, z.terms[0].exp = E ∧ z.terms[0].coeff = coeffAtExp z.terms E := by
+  have hne : 0 < z.terms.size := by
+    rcases Nat.eq_zero_or_pos z.terms.size with h | h
+    · exfalso; apply hE
+      have : z.terms = #[] := Array.eq_empty_of_size_eq_zero h
+      rw [this]; rfl
+    · exact h
+  refine ⟨hne, ?_⟩
+  have hhead := coeffAtExp_head z.terms hne hz.2
+  have hexp : z.terms[0].exp = E := by
+    rcases rat_lt_trichotomy z.terms[0].exp E with h | h | h
+    · exact absurd (coeffAtExp_at_larger_exp_is_zero z.terms E hz.2 hne h) hE
+    · exact h
+    · have := habove _ h; rw [hhead] at this; exact absurd this (hz.1 0 hne)
+  exact ⟨hexp, by rw [← hexp, hhead]⟩
+
+private theorem coeffAtExp_add (x y : LC) (e : Exp) :
+    coeffAtExp (add x y).terms e = coeffAtExp x.terms e + coeffAtExp y.terms e :=
+  coeffAtExp_mergeSorted x.terms y.terms e
+
+private theorem coeffAtExp_neg (x : LC) (e : Exp) :
+    coeffAtExp (neg x).terms e = -coeffAtExp x.terms e := by
+  rw [coeffAtExp_eq_wsum, coeffAtExp_eq_wsum, wsum_neg]
+
+/-- Coefficients of a product: `c_{xy}(e) = Σ_{t ∈ y} t.coeff · c_x(e − t.exp)`. -/
+private theorem coeffAtExp_mul (x y : LC) (e : Exp) :
+    coeffAtExp (mul x y).terms e = wsum y.terms.toList (fun ey => coeffAtExp x.terms (e - ey)) := by
+  rw [coeffAtExp_eq_wsum, wsum_mul]
+  apply wsum_congr; intro ey
+  rw [coeffAtExp_eq_wsum]
+  apply wsum_congr; intro ex
+  by_cases h : ex + ey = e
+  · have : ex = e - ey := by grind
+    subst this; simp [h]
+  · have : ¬ ex = e - ey := by grind
+    simp [h, this]
+
+/-- A nonempty sorted array is its head followed by terms of smaller exponent. -/
+private theorem toList_head_tail (xs : Array Term) (hne : 0 < xs.size) (hs : Sorted xs) :
+    xs.toList = xs[0] :: xs.toList.drop 1 ∧ ∀ t ∈ xs.toList.drop 1, t.exp < xs[0].exp := by
+  constructor
+  · have := List.drop_eq_getElem_cons (l := xs.toList) (i := 0) (by simpa using hne)
+    simpa using this
+  · intro t ht
+    obtain ⟨k, hk, rfl⟩ := List.mem_iff_getElem.mp ht
+    simp only [List.getElem_drop, Array.getElem_toList]
+    simp only [List.length_drop, Array.length_toList] at hk
+    have := sorted_tail_lt xs hs hne k (by omega)
+    simpa [Nat.add_comm] using this
+
+/-- The leading term of a product of nonzero normalized values is the product of
+their leading terms. In particular there are no zero divisors. -/
+theorem mul_lead (x y : LC) (hx : x.FullWF) (hy : y.FullWF)
+    (nx : 0 < x.terms.size) (ny : 0 < y.terms.size) :
+    ∃ h : 0 < (mul x y).terms.size,
+      (mul x y).terms[0].exp = x.terms[0].exp + y.terms[0].exp ∧
+      (mul x y).terms[0].coeff = x.terms[0].coeff * y.terms[0].coeff := by
+  obtain ⟨hl, htl⟩ := toList_head_tail y.terms ny hy.2
+  have hx0 := coeffAtExp_head x.terms nx hx.2
+  have zx : ∀ e, e > x.terms[0].exp → coeffAtExp x.terms e = 0 :=
+    fun e h => coeffAtExp_at_larger_exp_is_zero x.terms e hx.2 nx h
+  let E := x.terms[0].exp + y.terms[0].exp
+  -- For `e ≥ E`, only the head of `y` contributes.
+  have key : ∀ e, e ≥ E → coeffAtExp (mul x y).terms e =
+      y.terms[0].coeff * coeffAtExp x.terms (e - y.terms[0].exp) := by
+    intro e he
+    rw [coeffAtExp_mul, hl, wsum_cons]
+    have he' : e ≥ x.terms[0].exp + y.terms[0].exp := he
+    have hz : wsum (List.drop 1 y.terms.toList) (fun ey => coeffAtExp x.terms (e - ey)) = 0 :=
+      wsum_eq_zero _ _ (fun t ht => zx _ (by have := htl t ht; grind))
+    rw [hz]; grind
+  have hE : coeffAtExp (mul x y).terms E = x.terms[0].coeff * y.terms[0].coeff := by
+    rw [key E (by simp only [E]; grind)]
+    have : E - y.terms[0].exp = x.terms[0].exp := by grind
+    rw [this, hx0]; grind
+  have hne : x.terms[0].coeff * y.terms[0].coeff ≠ 0 := by
+    have := hx.1 0 nx; have := hy.1 0 ny; grind
+  obtain ⟨h, hexp, hc⟩ := lead_of_coeff (mul x y) (mul_fullWF _ _ hx) E (by rw [hE]; exact hne)
+    (fun e he => by
+      have he' : e > x.terms[0].exp + y.terms[0].exp := he
+      rw [key e (by grind), zx _ (by grind)]; grind)
+  exact ⟨h, hexp, by rw [hc, hE]⟩
+
+theorem pos_mul (a b : LC) (ha : a.FullWF) (hb : b.FullWF) (hpa : Pos a) (hpb : Pos b) :
+    Pos (mul a b) := by
+  obtain ⟨na, ca⟩ := hpa; obtain ⟨nb, cb⟩ := hpb
+  obtain ⟨h, _, hc⟩ := mul_lead a b ha hb na nb
+  exact ⟨h, by rw [hc]; exact Rat.mul_pos ca cb⟩
+
+theorem pos_add (a b : LC) (ha : a.FullWF) (hb : b.FullWF) (hpa : Pos a) (hpb : Pos b) :
+    Pos (add a b) := by
+  obtain ⟨na, ca⟩ := hpa; obtain ⟨nb, cb⟩ := hpb
+  have hab := add_fullWF a b ha hb
+  have ha0 := coeffAtExp_head a.terms na ha.2
+  have hb0 := coeffAtExp_head b.terms nb hb.2
+  have za : ∀ e, e > a.terms[0].exp → coeffAtExp a.terms e = 0 :=
+    fun e h => coeffAtExp_at_larger_exp_is_zero a.terms e ha.2 na h
+  have zb : ∀ e, e > b.terms[0].exp → coeffAtExp b.terms e = 0 :=
+    fun e h => coeffAtExp_at_larger_exp_is_zero b.terms e hb.2 nb h
+  rcases rat_lt_trichotomy b.terms[0].exp a.terms[0].exp with h | h | h
+  · obtain ⟨hn, _, hc⟩ := lead_of_coeff _ hab a.terms[0].exp
+      (by rw [coeffAtExp_add, ha0, zb _ h]; grind)
+      (fun e he => by rw [coeffAtExp_add, za e he, zb e (by grind)]; grind)
+    exact ⟨hn, by rw [hc, coeffAtExp_add, ha0, zb _ h]; grind⟩
+  · obtain ⟨hn, _, hc⟩ := lead_of_coeff _ hab a.terms[0].exp
+      (by rw [coeffAtExp_add, ha0, ← h, hb0]; grind)
+      (fun e he => by rw [coeffAtExp_add, za e he, zb e (by grind)]; grind)
+    exact ⟨hn, by rw [hc, coeffAtExp_add, ha0, ← h, hb0]; grind⟩
+  · obtain ⟨hn, _, hc⟩ := lead_of_coeff _ hab b.terms[0].exp
+      (by rw [coeffAtExp_add, hb0, za _ h]; grind)
+      (fun e he => by rw [coeffAtExp_add, zb e he, za e (by grind)]; grind)
+    exact ⟨hn, by rw [hc, coeffAtExp_add, hb0, za _ h]; grind⟩
+
+/-- Every normalized value is zero, positive, or negative. -/
+theorem trichotomy (z : LC) (hz : z.FullWF) : z.terms.size = 0 ∨ Pos z ∨ Pos (neg z) := by
+  rcases Nat.eq_zero_or_pos z.terms.size with h | h
+  · exact Or.inl h
+  · right
+    have hc := hz.1 0 h
+    rcases rat_lt_trichotomy 0 z.terms[0].coeff with h1 | h1 | h1
+    · exact Or.inl ⟨h, h1⟩
+    · exact absurd h1.symm hc
+    · refine Or.inr ⟨by simpa [neg] using h, ?_⟩
+      simp only [neg, Array.getElem_map]; grind
+
+theorem not_pos_and_neg (z : LC) (h1 : Pos z) (h2 : Pos (neg z)) : False := by
+  obtain ⟨n, c⟩ := h1; obtain ⟨_, c'⟩ := h2
+  simp only [neg, Array.getElem_map] at c'
+  grind
+
+theorem not_pos_zero : ¬ Pos zero := fun ⟨h, _⟩ => by simp [zero] at h
+
+theorem pos_one : Pos one := ⟨by decide, by simp [one]; decide⟩
+
+/-- Single-term values are units: `(c εᵉ)(c⁻¹ ε⁻ᵉ) = 1` for `c ≠ 0`. -/
+theorem ofTerm_fullWF (e : Exp) (c : Coeff) : (ofTerm e c).FullWF := by
+  refine ⟨?_, ofTerm_sorted e c⟩
+  intro i hi
+  unfold ofTerm at hi ⊢
+  by_cases h0 : c == 0
+  · simp [h0] at hi
+  · simp only [h0, Bool.false_eq_true, ↓reduceIte] at hi ⊢
+    have : i = 0 := by simp at hi; omega
+    subst this; simpa using h0
+
+theorem ofTerm_mul_inv (e : Exp) (c : Coeff) (hc : c ≠ 0) :
+    mul (ofTerm e c) (ofTerm (-e) c⁻¹) = one := by
+  have hwf := ofTerm_fullWF
+  have hw : ∀ e c g, wsum (ofTerm e c).terms.toList g = c * g e := fun e c g => by
+    unfold ofTerm
+    by_cases h0 : c == 0
+    · simp only [h0, ↓reduceIte]; simp at h0; simp [h0, wsum_nil]
+    · simp only [h0, Bool.false_eq_true, ↓reduceIte]; simp [wsum_cons, wsum_nil, Rat.add_zero]
+  apply eq_of_wsum_eq _ _ (mul_fullWF _ _ (hwf e c)) one_fullWF
+  intro g
+  rw [wsum_mul, hw, hw, wsum_one, Rat.add_neg_cancel]
+  rw [← Rat.mul_assoc, Rat.inv_mul_cancel _ hc, Rat.one_mul]
+
 end Proofs
 
 /-! ## Automatic Differentiation -/
@@ -2484,6 +2671,203 @@ instance : CommRing NLC where
 
 /-- `grind` now proves ring identities in the Levi-Civita field. -/
 example (x y : NLC) : (x + y) * (x - y) = x * x - y * y := by grind
+
+/-! ### The order
+
+`x < y` means `y - x` has a positive leading coefficient. With it `NLC` is a
+linearly ordered commutative ring (`Lean.Grind.OrderedRing`), so `grind` also
+does linear arithmetic over the Levi-Civita field. -/
+
+/-- `x` is positive: its leading coefficient is positive. -/
+def IsPos (x : NLC) : Prop := LC.Pos x.val
+
+private theorem isPos_add {x y : NLC} (hx : IsPos x) (hy : IsPos y) : IsPos (x + y) :=
+  pos_add _ _ x.property y.property hx hy
+
+private theorem isPos_mul {x y : NLC} (hx : IsPos x) (hy : IsPos y) : IsPos (x * y) :=
+  pos_mul _ _ x.property y.property hx hy
+
+private theorem not_isPos_both (x : NLC) (h1 : IsPos x) (h2 : IsPos (-x)) : False :=
+  not_pos_and_neg x.val h1 h2
+
+private theorem eq_zero_of_size (x : NLC) (h : x.val.terms.size = 0) : x = 0 := by
+  apply ext; show x.val = LC.zero
+  have : x.val.terms = #[] := Array.eq_empty_of_size_eq_zero h
+  cases hx : x.val; simp_all [LC.zero]
+
+private theorem isPos_tri (x : NLC) : x = 0 ∨ IsPos x ∨ IsPos (-x) := by
+  rcases trichotomy x.val x.property with h | h | h
+  · exact Or.inl (eq_zero_of_size x h)
+  · exact Or.inr (Or.inl h)
+  · exact Or.inr (Or.inr h)
+
+private theorem not_isPos_zero : ¬ IsPos 0 := not_pos_zero
+
+instance : LT NLC := ⟨fun x y => IsPos (y - x)⟩
+instance : LE NLC := ⟨fun x y => x = y ∨ x < y⟩
+
+theorem lt_def (x y : NLC) : x < y ↔ IsPos (y - x) := Iff.rfl
+theorem le_def (x y : NLC) : x ≤ y ↔ x = y ∨ x < y := Iff.rfl
+
+theorem lt_irrefl (x : NLC) : ¬ x < x := by
+  rw [lt_def]; have : x - x = 0 := by grind
+  rw [this]; exact not_isPos_zero
+
+theorem lt_trans {x y z : NLC} (h1 : x < y) (h2 : y < z) : x < z := by
+  rw [lt_def] at *; have : z - x = (z - y) + (y - x) := by grind
+  rw [this]; exact isPos_add h2 h1
+
+theorem lt_asymm {x y : NLC} (h1 : x < y) (h2 : y < x) : False := by
+  rw [lt_def] at *; have : x - y = -(y - x) := by grind
+  rw [this] at h2; exact not_isPos_both _ h1 h2
+
+theorem lt_trichotomy (x y : NLC) : x < y ∨ x = y ∨ y < x := by
+  rcases isPos_tri (y - x) with h | h | h
+  · exact Or.inr (Or.inl (by grind))
+  · exact Or.inl h
+  · right; right; rw [lt_def]; have : x - y = -(y - x) := by grind
+    rw [this]; exact h
+
+open Std in
+instance : IsLinearOrder NLC where
+  le_refl _ := Or.inl rfl
+  le_trans _ _ _ h1 h2 := by
+    rcases h1 with rfl | h1 <;> rcases h2 with rfl | h2
+    · exact Or.inl rfl
+    · exact Or.inr h2
+    · exact Or.inr h1
+    · exact Or.inr (lt_trans h1 h2)
+  le_antisymm _ _ h1 h2 := by
+    rcases h1 with h1 | h1
+    · exact h1
+    · rcases h2 with h2 | h2
+      · exact h2.symm
+      · exact (lt_asymm h1 h2).elim
+  le_total x y := by
+    rcases lt_trichotomy x y with h | h | h
+    · exact Or.inl (Or.inr h)
+    · exact Or.inl (Or.inl h)
+    · exact Or.inr (Or.inr h)
+
+open Std in
+instance : LawfulOrderLT NLC where
+  lt_iff x y := by
+    constructor
+    · intro h
+      refine ⟨Or.inr h, ?_⟩
+      rintro (h' | h')
+      · subst h'; exact lt_irrefl _ h
+      · exact lt_asymm h h'
+    · rintro ⟨h1 | h1, h2⟩
+      · subst h1; exact (h2 (Or.inl rfl)).elim
+      · exact h1
+
+private theorem add_lt_add_right {a b : NLC} (c : NLC) (h : a < b) : a + c < b + c := by
+  rw [lt_def] at *; have : b + c - (a + c) = b - a := by grind
+  rw [this]; exact h
+
+private theorem lt_of_add_lt_add_right {a b : NLC} (c : NLC) (h : a + c < b + c) : a < b := by
+  rw [lt_def] at *; have : b + c - (a + c) = b - a := by grind
+  rw [this] at h; exact h
+
+open Lean.Grind in
+instance : OrderedAdd NLC where
+  add_le_left_iff {a b} c := by
+    constructor
+    · rintro (rfl | h)
+      · exact Or.inl rfl
+      · exact Or.inr (add_lt_add_right c h)
+    · rintro (h | h)
+      · left; have : a = a + c - c := by grind
+        rw [this, h]; grind
+      · exact Or.inr (lt_of_add_lt_add_right c h)
+
+open Lean.Grind in
+instance : OrderedRing NLC where
+  zero_lt_one := by
+    rw [lt_def]; have : (1 : NLC) - 0 = 1 := by grind
+    rw [this]; exact pos_one
+  mul_lt_mul_of_pos_left {a b c} h hc := by
+    rw [lt_def] at *; have : c * b - c * a = (c - 0) * (b - a) := by grind
+    rw [this]; exact isPos_mul hc h
+  mul_lt_mul_of_pos_right {a b c} h hc := by
+    rw [lt_def] at *; have : b * c - a * c = (b - a) * (c - 0) := by grind
+    rw [this]; exact isPos_mul h hc
+
+/-- `grind` does ordered-ring reasoning in the Levi-Civita field. -/
+example (x y : NLC) (h : 0 < x) (h' : x < y) : 0 < y + x := by grind
+
+/-- No zero divisors. -/
+theorem mul_ne_zero {x y : NLC} (hx : x ≠ 0) (hy : y ≠ 0) : x * y ≠ 0 := by
+  intro h
+  have nx : 0 < x.val.terms.size :=
+    Nat.pos_of_ne_zero fun h0 => hx (eq_zero_of_size x h0)
+  have ny : 0 < y.val.terms.size :=
+    Nat.pos_of_ne_zero fun h0 => hy (eq_zero_of_size y h0)
+  obtain ⟨hn, _⟩ := mul_lead x.val y.val x.property y.property nx ny
+  have : (x * y).val.terms.size = 0 := by rw [h]; rfl
+  simp only [val_mul] at this; omega
+
+/-- The single term `c εᵉ`. -/
+def monomial (e : Exp) (c : Coeff) : NLC := ⟨ofTerm e c, ofTerm_fullWF e c⟩
+
+/-- A single term `c εᵉ` (`c ≠ 0`) is invertible, with inverse `c⁻¹ ε⁻ᵉ`. -/
+theorem monomial_mul_inv (e : Exp) (c : Coeff) (hc : c ≠ 0) :
+    monomial e c * monomial (-e) c⁻¹ = 1 := ext (ofTerm_mul_inv e c hc)
+
+/-- The infinitesimal `ε` and the infinite `H = ε⁻¹`, as elements of `NLC`. -/
+def eps : NLC := monomial (-1) 1
+def bigH : NLC := monomial 1 1
+
+theorem val_eps : eps.val = LC.epsilon := by simp [eps, monomial, ofTerm, LC.epsilon]
+theorem val_bigH : bigH.val = LC.H := by simp [bigH, monomial, ofTerm, LC.H]
+
+/-- Embedding of the rationals. -/
+def ofRat (q : Rat) : NLC := ⟨ofCoeff q, ofCoeff_fullWF q⟩
+
+theorem eps_mul_bigH : eps * bigH = 1 := by
+  have h := monomial_mul_inv (-1) 1 (by decide)
+  rw [show (-(-1) : Rat) = 1 by decide, show (1 : Rat)⁻¹ = 1 by grind] at h
+  exact h
+
+/-- Positivity of a two-term difference, read off from its coefficients. -/
+private theorem isPos_of_lead (z : NLC) (E : Exp) (hE : 0 < coeffAtExp z.val.terms E)
+    (habove : ∀ e, e > E → coeffAtExp z.val.terms e = 0) : IsPos z := by
+  obtain ⟨h, _, hc⟩ := lead_of_coeff z.val z.property E (by grind) habove
+  exact ⟨h, by rw [hc]; exact hE⟩
+
+private theorem coeffAtExp_ofTerm (e c e' : Rat) :
+    coeffAtExp (ofTerm e c).terms e' = if e = e' then c else 0 := by
+  unfold ofTerm
+  by_cases h0 : c == 0
+  · simp only [h0, ↓reduceIte]; simp at h0; subst h0; simp [coeffAtExp_empty]
+  · simp only [h0, Bool.false_eq_true, ↓reduceIte]
+    simp [coeffAtExp]; split <;> grind
+
+private theorem coeffAtExp_sub (x y : NLC) (e : Exp) :
+    coeffAtExp (x - y).val.terms e = coeffAtExp x.val.terms e - coeffAtExp y.val.terms e := by
+  show coeffAtExp (add x.val (neg y.val)).terms e = _
+  rw [coeffAtExp_add, coeffAtExp_neg]; grind
+
+theorem eps_pos : 0 < eps := by
+  rw [lt_def]
+  apply isPos_of_lead _ (-1) <;>
+    (try intro e he) <;> rw [coeffAtExp_sub] <;>
+    simp [eps, monomial, coeffAtExp_ofTerm, zero, coeffAtExp_empty] <;> grind
+
+/-- `ε` is smaller than every positive rational. -/
+theorem eps_lt_ofRat {q : Rat} (hq : 0 < q) : eps < ofRat q := by
+  rw [lt_def]
+  apply isPos_of_lead _ 0 <;>
+    (try intro e he) <;> rw [coeffAtExp_sub] <;>
+    simp [eps, ofRat, ofCoeff, monomial, coeffAtExp_ofTerm] <;> grind
+
+/-- `H` is larger than every rational. -/
+theorem ofRat_lt_bigH (q : Rat) : ofRat q < bigH := by
+  rw [lt_def]
+  apply isPos_of_lead _ 1 <;>
+    (try intro e he) <;> rw [coeffAtExp_sub] <;>
+    simp [bigH, ofRat, ofCoeff, monomial, coeffAtExp_ofTerm] <;> grind
 
 end NLC
 

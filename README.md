@@ -52,7 +52,7 @@ Everything builds on Lean `v4.35.0-rc3` (`lake build`, `lake test`).
 
 Native compilation achieves **~1 billion ops/sec** for basic operations.
 
-## Formal core: a verified commutative ring
+## Formal core: a verified ordered commutative ring
 
 `LeviCivita.Core` (rational coefficients and exponents) proves the field's ring
 structure with no `sorry`. The laws hold for *normalized* values (sorted, strictly
@@ -64,8 +64,21 @@ import LeviCivita.Core
 open LeviCivita.Core
 
 instance : Lean.Grind.CommRing NLC := inferInstance   -- depends only on propext, choice, Quot.sound
+instance : Lean.Grind.OrderedRing NLC := inferInstance  -- linear order: sign of the leading term
 example (x y : NLC) : (x + y) * (x - y) = x * x - y * y := by grind
+example (x y : NLC) (h : 0 < x) (h' : x < y) : 0 < y + x := by grind
+
+#check NLC.mul_ne_zero        -- x ≠ 0 → y ≠ 0 → x * y ≠ 0
+#check NLC.monomial_mul_inv   -- c ≠ 0 → (c εᵉ) * (c⁻¹ ε⁻ᵉ) = 1
+#check NLC.eps_pos            -- 0 < ε
+#check NLC.eps_lt_ofRat       -- 0 < q → ε < q      (ε is infinitesimal)
+#check NLC.ofRat_lt_bigH      -- q < H              (H = ε⁻¹ is infinite)
 ```
+
+`NLC` holds *finite* sums of terms, so it is not a field: `1/(1+ε) = 1 − ε + ε² − …`
+needs infinitely many terms. Its units are exactly the single-term values. The
+full field is the completion; `Fast` and the analysis modules compute in it with
+explicit truncation.
 
 The proofs reduce every law to an identity of finite sums: addition is additive
 in the weighted sum `Σ coeff · g(exp)`, multiplication is a convolution, and the
